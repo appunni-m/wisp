@@ -13,7 +13,7 @@
     "turn": "node tools/turn-server.mjs",
     "emulator": "emulator -avd wisp -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect",
     "test": "node --test --test-force-exit test/unit/*.test.mjs",
-    "test:e2e": "node --test --test-force-exit test/e2e/handshake.test.mjs test/e2e/group.test.mjs test/e2e/pairing.test.mjs test/e2e/mobile.test.mjs test/e2e/chatlist.test.mjs test/e2e/media.test.mjs test/e2e/swarm.test.mjs",
+    "test:e2e": "node --test --test-force-exit --test-concurrency=1 test/e2e/handshake.test.mjs test/e2e/group.test.mjs test/e2e/pairing.test.mjs test/e2e/mobile.test.mjs test/e2e/chatlist.test.mjs test/e2e/media.test.mjs test/e2e/swarm.test.mjs",
     "test:android": "node --test --test-force-exit test/e2e/android.test.mjs",
     "test:all": "npm test && npm run test:e2e && npm run test:android"
   },
