@@ -1,0 +1,29 @@
+{
+  "name": "wisp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Wisp \u2014 peer-to-peer chat over WebRTC. No accounts, no signaling server, no message store.",
+  "scripts": {
+    "start": "node serve.mjs",
+    "phone": "node serve.mjs --lan --https",
+    "build:web": "node tools/build-web.mjs",
+    "build:android": "node tools/build-web.mjs && cap sync android && cd android && ./gradlew assembleDebug",
+    "demo": "node tools/demo.mjs",
+    "turn": "node tools/turn-server.mjs",
+    "emulator": "emulator -avd wisp -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect",
+    "test": "node --test --test-force-exit test/unit/*.test.mjs",
+    "test:e2e": "node --test --test-force-exit test/e2e/handshake.test.mjs test/e2e/group.test.mjs test/e2e/pairing.test.mjs test/e2e/mobile.test.mjs test/e2e/chatlist.test.mjs test/e2e/media.test.mjs test/e2e/swarm.test.mjs",
+    "test:android": "node --test --test-force-exit test/e2e/android.test.mjs",
+    "test:all": "npm test && npm run test:e2e && npm run test:android"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^8.5.3",
+    "@capacitor/cli": "^8.5.3",
+    "@capacitor/core": "^8.5.3",
+    "jsqr": "^1.4.0",
+    "node-turn": "^0.0.6",
+    "playwright-core": "^1.64.0",
+    "qrcode": "^1.5.4"
+  }
+}

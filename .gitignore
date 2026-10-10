@@ -1,0 +1,20 @@
+node_modules/
+.npm-cache/
+.DS_Store
+.tmp/
+
+# Local Android toolchain, kept inside the project so nothing outside it is touched.
+.android-sdk/
+.android/
+.gradle/
+.android-env.sh
+.devcert/
+
+# Build outputs
+dist/
+android/app/build/
+android/build/
+android/.gradle/
+android/app/src/main/assets/public/
+android/app/src/main/assets/capacitor.config.json
+android/local.properties

@@ -1,0 +1,105 @@
+name: Release
+
+# Builds a release APK. Signs it when the keystore secrets are present, and
+# otherwise produces an unsigned APK and says so — so this never fails just
+# because a fork has no signing key.
+#
+#   git tag v0.1.0 && git push origin v0.1.0
+#
+# Secrets, all optional but needed together for a signed build:
+#   ANDROID_KEYSTORE_BASE64    the .jks file, base64 encoded
+#   ANDROID_KEYSTORE_PASSWORD  the store password
+#   ANDROID_KEY_ALIAS          the key alias
+#   ANDROID_KEY_PASSWORD       the key password
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Release APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install the SDK the project targets
+        run: sdkmanager --install "platforms;android-36" "build-tools;36.0.0"
+
+      - run: npm ci
+      - run: npm run build:web
+      - run: npx cap sync android
+
+      - name: Check for a signing key
+        id: signing
+        run: |
+          if [ -n "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ]; then
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No ANDROID_KEYSTORE_BASE64 secret, so this APK is unsigned and cannot be installed without re-signing."
+          fi
+
+      - name: Decode the keystore
+        if: steps.signing.outputs.signed == 'true'
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/release.jks"
+          echo "WISP_KEYSTORE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+          echo "WISP_KEYSTORE_PASSWORD=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" >> "$GITHUB_ENV"
+          echo "WISP_KEY_ALIAS=${{ secrets.ANDROID_KEY_ALIAS }}" >> "$GITHUB_ENV"
+          echo "WISP_KEY_PASSWORD=${{ secrets.ANDROID_KEY_PASSWORD }}" >> "$GITHUB_ENV"
+
+      - name: Build the release APK
+        run: ./gradlew assembleRelease --no-daemon
+        working-directory: android
+
+      - name: Name the artifact
+        id: apk
+        run: |
+          VERSION="${GITHUB_REF_NAME:-manual}"
+          TARGET="wisp-${VERSION}.apk"
+          cp android/app/build/outputs/apk/release/app-release.apk "$TARGET"
+          if [ "${{ steps.signing.outputs.signed }}" = "true" ]; then
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          else
+            # An unsigned APK cannot be installed, so make that obvious rather
+            # than letting somebody download a file that will not open.
+            mv "$TARGET" "wisp-${VERSION}-UNSIGNED.apk"
+            TARGET="wisp-${VERSION}-UNSIGNED.apk"
+          fi
+          echo "path=$TARGET" >> "$GITHUB_OUTPUT"
+          ls -lh "$TARGET"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wisp-release-apk
+          path: ${{ steps.apk.outputs.path }}
+
+      - name: Attach to the release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.apk.outputs.path }}
+          generate_release_notes: true
+          body: |
+            Install with `adb install -r ${{ steps.apk.outputs.path }}`.
+
+            This build pairs devices directly: one person creates an invite, the
+            other scans or pastes it and sends a reply back. There is no server
+            and no account.

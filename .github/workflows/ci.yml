@@ -1,0 +1,164 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Unit tests and the browser end-to-end suite. Both run on the runner's own
+  # Chrome, so nothing needs downloading beyond npm packages.
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Check a browser is available
+        run: |
+          if [ ! -x /usr/bin/google-chrome ]; then
+            echo "::error::Google Chrome is not on this runner; the browser tests need it."
+            exit 1
+          fi
+          /usr/bin/google-chrome --version
+
+      - name: Browser end-to-end tests
+        run: npm run test:e2e
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
+
+      - name: Keep the screenshots the tests produced
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: docs/*.png
+          if-no-files-found: ignore
+
+  # The web app has no build step, but the APK needs the assets collected, the
+  # Capacitor project synced, and Gradle to run.
+  apk:
+    name: Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install the SDK the project targets
+        run: sdkmanager --install "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Collect the web assets
+        run: npm run build:web
+
+      - name: Sync Capacitor
+        run: npx cap sync android
+
+      - name: Build the debug APK
+        run: ./gradlew assembleDebug --no-daemon
+        working-directory: android
+
+      - name: Report what was built
+        run: |
+          ls -lh android/app/build/outputs/apk/debug/
+          echo "### Debug APK" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          ls -lh android/app/build/outputs/apk/debug/*.apk >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "Install it with \`adb install -r app-debug.apk\`." >> $GITHUB_STEP_SUMMARY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wisp-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+  # Proves the checks in the README are true: two peers pair, a room forms, and a
+  # file survives a dropped link. Uses the emulator already installed on the
+  # runner rather than downloading a system image.
+  # Kept in its own job so a slow emulator never holds up the build.
+  android-e2e:
+    name: Android end-to-end
+    runs-on: ubuntu-latest
+    # Off by default: emulators are slow, and this is verification rather than
+    # something that should block a merge.
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install the SDK and an emulator image
+        run: |
+          sdkmanager --install "platforms;android-36" "build-tools;36.0.0" "emulator" "system-images;android-35;google_apis;x86_64"
+          yes | sdkmanager --licenses > /dev/null
+
+      - run: npm ci
+      - run: npm run build:web
+      - run: npx cap sync android
+
+      - name: Build the debug APK
+        run: ./gradlew assembleDebug --no-daemon
+        working-directory: android
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run the app on an emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect
+          script: |
+            adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+            adb shell am start -n chat.wisp.app/.MainActivity
+            sleep 10
+            ADB_PATH="$(which adb)" npm run test:android
+        env:
+          CHROME_PATH: /usr/bin/google-chrome

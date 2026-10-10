@@ -1,0 +1,397 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<meta name="theme-color" content="#0b141a">
+<meta name="description" content="Peer-to-peer chat over WebRTC. No accounts, no signaling server, no message store.">
+<title>Wisp</title>
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" href="./icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+
+<header class="appbar" id="appbar">
+  <div class="appbar-title">
+    <span class="brand-dot" id="link-dot" aria-hidden="true"></span>
+    <strong id="app-name">Wisp</strong>
+  </div>
+  <div class="appbar-actions">
+    <button type="button" class="icon-btn" id="btn-search" title="Search" aria-label="Search">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
+    </button>
+    <button type="button" class="icon-btn" id="btn-new-chat" title="New chat" aria-label="New chat">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+    </button>
+    <button type="button" class="icon-btn" id="btn-settings" title="You" aria-label="You" aria-expanded="false">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10Zm0 2c-4 0-8 2-8 4.5V21h16v-2.5C20 16 16 14 12 14Z"/></svg>
+    </button>
+  </div>
+</header>
+
+<div class="search-bar" id="search-bar" hidden>
+  <input id="chat-search" type="search" placeholder="Search chats" autocomplete="off" spellcheck="false">
+  <button type="button" class="icon-btn" id="btn-search-close" aria-label="Close search">✕</button>
+</div>
+
+<!-- Identity drawer -->
+
+<main>
+  <!-- Chat list -->
+  <section class="view list-view" id="view-home" hidden>
+    <ul class="chat-list" id="chat-list"></ul>
+    <div class="empty-state" id="empty-state">
+      <h2>No chats yet</h2>
+      <p>Start one by showing someone a code — nothing is stored on a server, so the code <em>is</em> the connection.</p>
+    </div>
+    <button type="button" class="fab" id="fab-new" aria-label="New chat">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+    </button>
+  </section>
+
+  <!-- Settings -->
+  <section class="view panel" id="view-settings" hidden>
+    <div class="profile-card">
+      <span class="avatar big" id="settings-avatar">?</span>
+      <div class="profile-meta">
+        <strong id="settings-nick">…</strong>
+        <small id="settings-fingerprint"></small>
+      </div>
+    </div>
+
+  <section class="identity-panel" id="identity-panel" hidden>
+    <h2>How you appear</h2>
+
+    <label class="field">
+      <span>Nickname</span>
+      <input id="nick-input" type="text" maxlength="48" autocomplete="off" spellcheck="false">
+    </label>
+
+    <fieldset class="modes">
+      <legend>Sharing</legend>
+      <label class="mode">
+        <input type="radio" name="id-mode" value="pseudonym">
+        <span>
+          <strong>Nickname only</strong>
+          <small>Stable key — the same person recognises you next time.</small>
+        </span>
+      </label>
+      <label class="mode">
+        <input type="radio" name="id-mode" value="contact">
+        <span>
+          <strong>Share my details</strong>
+          <small>Sends the contact card below, signed, with the invite.</small>
+        </span>
+      </label>
+      <label class="mode">
+        <input type="radio" name="id-mode" value="burner">
+        <span>
+          <strong>Throwaway</strong>
+          <small>A one-off key. Nothing links this chat to you.</small>
+        </span>
+      </label>
+    </fieldset>
+
+    <div id="contact-block" hidden>
+      <label class="field"><span>Name</span><input id="contact-name" type="text" maxlength="200" autocomplete="name"></label>
+      <label class="field"><span>Phone</span><input id="contact-phone" type="tel" maxlength="200" autocomplete="tel"></label>
+      <label class="field"><span>Email</span><input id="contact-email" type="email" maxlength="200" autocomplete="email"></label>
+      <label class="field"><span>Note</span><input id="contact-note" type="text" maxlength="200"></label>
+    </div>
+
+    <p class="hint" id="own-fingerprint"></p>
+  </section>
+  </section>
+
+  <!-- 1. Connect -->
+  <section class="view panel" id="view-connect" hidden>
+    <h1 id="connect-heading">Start a private chat</h1>
+    <p class="lede">
+      Messages travel directly between the two devices. Nothing is stored on a server,
+      because there isn't one — the invite code <em>is</em> the connection.
+    </p>
+
+    <button type="button" class="primary" id="btn-create">Create an invite</button>
+
+    <label class="check">
+      <input type="checkbox" id="group-mode">
+      <span>
+        <strong>Group chat</strong>
+        <small>Everyone you invite can see and talk to each other, peer to peer.</small>
+      </span>
+    </label>
+    <label class="field" id="group-label-field" hidden>
+      <span>Room name</span>
+      <input id="group-label" type="text" maxlength="40" placeholder="Saturday planning" autocomplete="off">
+    </label>
+
+    <div id="invite-result" hidden>
+      <h2>1. Send this to the person you want to talk to</h2>
+
+      <div class="qr-frame">
+        <canvas id="qr-canvas" aria-label="Invite QR code"></canvas>
+      </div>
+      <p class="hint" id="qr-caption">Let them scan this with their camera.</p>
+
+      <details class="code-details">
+        <summary>…or send the text instead</summary>
+        <textarea id="invite-code" readonly rows="4" spellcheck="false"></textarea>
+      </details>
+
+      <div class="row">
+        <button type="button" class="secondary" id="btn-copy-invite">Copy code</button>
+        <button type="button" class="secondary" id="btn-copy-link">Copy link</button>
+        <button type="button" class="secondary" id="btn-share">Share…</button>
+      </div>
+      <div class="row">
+        <button type="button" class="secondary" id="btn-write-nfc" hidden>Write to NFC tag</button>
+      </div>
+      <p class="hint">
+        The code contains your network addresses and expires — treat it like a door key.
+        It travels in the link’s fragment, so the web server never sees it.
+      </p>
+    </div>
+
+    <div class="divider"><span>or join someone</span></div>
+
+    <h2 id="paste-heading">Paste an invite</h2>
+    <textarea id="paste-input" rows="3" placeholder="Paste the invite link or code here" spellcheck="false"></textarea>
+
+    <div class="row">
+      <button type="button" class="secondary" id="btn-scan-qr" hidden>Scan QR code</button>
+      <button type="button" class="secondary" id="btn-tap-nfc" hidden>Tap NFC tag</button>
+    </div>
+
+    <div class="scanner" id="scanner" hidden>
+      <video id="scanner-video" playsinline muted></video>
+      <div class="scanner-bar">
+        <span id="scanner-status">Looking for a code…</span>
+        <button type="button" class="secondary" id="btn-scan-cancel">Stop</button>
+      </div>
+    </div>
+
+    <button type="button" class="primary" id="btn-paste">Connect</button>
+    <p class="hint" id="paste-hint">Works with a whole link, just the code, or a message that contains one.</p>
+    <p class="hint" id="pairing-capabilities"></p>
+  </section>
+
+  <!-- 2. Reply -->
+  <section class="view panel" id="view-reply" hidden>
+    <h1>Send this back</h1>
+    <p class="lede">
+      <strong id="reply-peer">Your contact</strong> needs this reply code to finish the connection.
+      Nothing is connected until they paste it.
+    </p>
+    <div class="qr-frame">
+      <canvas id="reply-qr" aria-label="Reply QR code"></canvas>
+    </div>
+    <p class="hint">They can scan this, or paste the text below.</p>
+    <details class="code-details" open>
+      <summary>Reply code</summary>
+      <textarea id="reply-code" readonly rows="4" spellcheck="false"></textarea>
+    </details>
+    <div class="row">
+      <button type="button" class="secondary" id="btn-copy-reply">Copy code</button>
+      <button type="button" class="secondary" id="btn-copy-reply-link">Copy link</button>
+      <button type="button" class="secondary" id="btn-share-reply">Share…</button>
+    </div>
+    <p class="hint">Keep this screen open. The connection lives in this page and cannot survive a reload.</p>
+  </section>
+
+  <!-- Contact info -->
+  <section class="view panel" id="view-info" hidden>
+    <div class="info-head">
+      <button type="button" class="icon-btn" id="btn-info-back" aria-label="Back">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+      </button>
+      <strong>Contact info</strong>
+    </div>
+
+    <div class="info-profile">
+      <span class="avatar big" id="info-avatar">?</span>
+      <h2 id="info-nick">…</h2>
+      <p class="hint" id="info-subtitle"></p>
+    </div>
+
+    <div class="info-block">
+      <p class="sheet-label">Security</p>
+      <div class="peer-card" id="peer-card"></div>
+    </div>
+
+    <div class="info-block">
+      <p class="sheet-label">This chat</p>
+      <button type="button" class="sheet-row" id="info-ttl">Disappearing messages</button>
+      <button type="button" class="sheet-row" id="info-verify">Show security code</button>
+      <button type="button" class="sheet-row" id="info-clear">Clear messages</button>
+      <button type="button" class="sheet-row danger" id="info-delete">Delete chat</button>
+    </div>
+  </section>
+
+  <!-- 3. Conversation -->
+  <section class="view chat-view" id="view-chat" hidden>
+    <header class="chat-header">
+      <button type="button" class="icon-btn" id="btn-back" aria-label="Back">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+      </button>
+      <button type="button" class="chat-title" id="chat-title" aria-label="Contact info">
+        <span class="avatar" id="chat-avatar">?</span>
+        <span class="chat-title-text">
+          <strong id="chat-header-title">…</strong>
+          <small id="chat-header-status"></small>
+        </span>
+      </button>
+      <button type="button" class="icon-btn" id="btn-chat-menu" aria-label="Menu">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8a1.6 1.6 0 1 0 0-3.2A1.6 1.6 0 0 0 12 8Zm0 5.6a1.6 1.6 0 1 0 0-3.2 1.6 1.6 0 0 0 0 3.2Zm0 5.6a1.6 1.6 0 1 0 0-3.2 1.6 1.6 0 0 0 0 3.2Z"/></svg>
+      </button>
+    </header>
+
+    <!-- Compact strip shown only in rooms; keeps room actions one tap away. -->
+    <div class="group-card" id="group-card" hidden></div>
+
+    <div class="messages" id="messages" aria-live="polite"></div>
+
+    <div class="offline-bar" id="offline-bar" hidden></div>
+
+    <div class="reply-bar" id="reply-bar" hidden>
+      <div class="reply-quote" id="reply-quote"></div>
+      <button type="button" class="icon-btn" id="btn-reply-cancel" aria-label="Cancel reply">✕</button>
+    </div>
+
+    <div class="recording-bar" id="recording-bar" hidden>
+      <span class="rec-dot" aria-hidden="true"></span>
+      <span id="recording-time">0:00</span>
+      <span class="hint">Recording a voice message…</span>
+      <button type="button" class="icon-btn" id="btn-record-cancel" aria-label="Cancel recording">✕</button>
+    </div>
+
+    <form class="composer" id="composer">
+      <button type="button" class="icon-btn" id="btn-emoji" aria-label="Emoji">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8.5 14.5a4.5 4.5 0 0 0 7 0"/><path d="M9 9.5h.01M15 9.5h.01"/></svg>
+      </button>
+      <input id="message-input" type="text" placeholder="Message" autocomplete="off" maxlength="4000">
+      <button type="button" class="icon-btn" id="btn-attach" aria-label="Attach a file">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16.5 6.5 9 14a2.1 2.1 0 0 0 3 3l7.5-7.5a4.2 4.2 0 0 0-6-6L5 12a6.4 6.4 0 0 0 9 9l7-7"/></svg>
+      </button>
+      <button type="submit" class="send-btn" id="btn-send" aria-label="Send">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 20.5 21 12 3 3.5 3 10l12 2-12 2z"/></svg>
+      </button>
+      <button type="button" class="send-btn mic" id="btn-mic" aria-label="Record a voice message" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Z"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+      </button>
+    </form>
+  </section>
+</main>
+
+<!-- Chat menu -->
+<div class="sheet-backdrop" id="sheet-backdrop" hidden>
+  <div class="sheet" role="dialog" aria-label="Chat options">
+    <div class="sheet-head">
+      <strong id="sheet-title">Chat options</strong>
+      <button type="button" class="icon-btn" id="btn-menu-close" aria-label="Close">✕</button>
+    </div>
+
+    <div class="sheet-section" id="menu-disappearing">
+      <p class="sheet-label">Disappearing messages</p>
+      <div class="ttl-options" id="ttl-options"></div>
+      <p class="hint" id="ttl-hint">New messages vanish from both devices after this long.</p>
+    </div>
+
+    <div class="sheet-section">
+      <p class="sheet-label">This chat</p>
+      <button type="button" class="sheet-row" id="menu-verify">Show security code</button>
+      <button type="button" class="sheet-row" id="menu-clear">Clear messages</button>
+      <button type="button" class="sheet-row danger" id="menu-close">Close chat</button>
+    </div>
+  </div>
+</div>
+
+<nav class="tabbar" id="tabbar">
+  <button type="button" class="tab" id="tab-chats" aria-selected="true">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a8 8 0 0 1-8 8H7l-4 3V12a8 8 0 0 1 8-8h2a8 8 0 0 1 8 8Z"/></svg>
+    <span>Chats</span>
+    <i class="tab-badge" id="tab-badge" hidden></i>
+  </button>
+  <button type="button" class="tab" id="tab-settings" aria-selected="false">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M12 3v2M12 19v2M4.2 7.5l1.7 1M18.1 15.5l1.7 1M4.2 16.5l1.7-1M18.1 8.5l1.7-1"/></svg>
+    <span>Settings</span>
+  </button>
+</nav>
+
+<!-- Message actions -->
+<div class="sheet-backdrop" id="message-menu" hidden>
+  <div class="sheet" role="dialog" aria-label="Message actions">
+    <div class="sheet-head">
+      <strong id="message-menu-title">Message</strong>
+      <button type="button" class="icon-btn" id="btn-message-menu-close" aria-label="Close">✕</button>
+    </div>
+    <button type="button" class="sheet-row" id="msg-reply">Reply</button>
+    <button type="button" class="sheet-row" id="msg-copy">Copy</button>
+    <button type="button" class="sheet-row" id="msg-star">Star</button>
+    <button type="button" class="sheet-row" id="msg-info">Message info</button>
+    <button type="button" class="sheet-row danger" id="msg-delete">Delete</button>
+  </div>
+</div>
+
+<!-- Chat row actions -->
+<div class="sheet-backdrop" id="chat-menu" hidden>
+  <div class="sheet" role="dialog" aria-label="Chat actions">
+    <div class="sheet-head">
+      <strong id="chat-menu-title">Chat</strong>
+      <button type="button" class="icon-btn" id="btn-chat-menu-close" aria-label="Close">✕</button>
+    </div>
+    <button type="button" class="sheet-row" id="row-pin">Pin</button>
+    <button type="button" class="sheet-row" id="row-read">Mark as read</button>
+    <button type="button" class="sheet-row" id="row-disappearing">Disappearing messages</button>
+    <button type="button" class="sheet-row danger" id="row-delete">Delete chat</button>
+  </div>
+</div>
+
+<!-- Emoji -->
+<div class="emoji-picker" id="emoji-picker" hidden></div>
+
+<!-- Attach menu -->
+<div class="sheet-backdrop" id="attach-backdrop" hidden>
+  <div class="sheet" role="dialog" aria-label="Send an attachment">
+    <div class="sheet-head">
+      <strong>Send</strong>
+      <button type="button" class="icon-btn" id="btn-attach-close" aria-label="Close">✕</button>
+    </div>
+    <button type="button" class="sheet-row" id="attach-photos">Photo or video</button>
+    <button type="button" class="sheet-row" id="attach-file">Document</button>
+    <p class="hint" style="padding: 0 18px">Files travel straight to the other device. Nothing is uploaded anywhere, and a transfer that is interrupted picks up where it stopped.</p>
+  </div>
+</div>
+
+<!-- Preview with caption -->
+<div class="sheet-backdrop" id="preview-backdrop" hidden>
+  <div class="sheet" role="dialog" aria-label="Send attachment">
+    <div class="sheet-head">
+      <strong id="preview-title">Send attachment</strong>
+      <button type="button" class="icon-btn" id="btn-preview-close" aria-label="Close">✕</button>
+    </div>
+    <div class="preview-list" id="preview-list"></div>
+    <div class="preview-caption">
+      <input id="preview-caption" type="text" placeholder="Add a caption…" maxlength="1000" autocomplete="off">
+    </div>
+    <div class="row" style="padding: 0 18px 10px">
+      <button type="button" class="secondary" id="btn-preview-cancel">Cancel</button>
+      <button type="button" class="primary" id="btn-preview-send" style="width:auto;flex:1">Send</button>
+    </div>
+  </div>
+</div>
+
+<!-- Full-screen image -->
+<div class="lightbox" id="lightbox" hidden>
+  <button type="button" class="icon-btn lightbox-close" id="btn-lightbox-close" aria-label="Close">✕</button>
+  <img id="lightbox-image" alt="">
+</div>
+
+<input type="file" id="input-photos" accept="image/*,video/*" multiple hidden>
+<input type="file" id="input-files" multiple hidden>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<script type="module" src="./src/app.js"></script>
+</body>
+</html>

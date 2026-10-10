@@ -1,0 +1,14 @@
+{
+  "name": "Wisp — private peer-to-peer chat",
+  "short_name": "Wisp",
+  "description": "Peer-to-peer chat over WebRTC with link-based pairing. No accounts, no signaling server, no message store — and conversations you can set to fade away.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0b141a",
+  "theme_color": "#0b141a",
+  "icons": [
+    { "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
