@@ -43,14 +43,6 @@ jobs:
         env:
           CHROME_PATH: /usr/bin/google-chrome
 
-      - name: Keep the screenshots the tests produced
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: screenshots
-          path: docs/*.png
-          if-no-files-found: ignore
-
   # The web app has no build step, but the APK needs the assets collected, the
   # Capacitor project synced, and Gradle to run.
   apk:
