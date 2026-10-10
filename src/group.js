@@ -117,6 +117,11 @@ export class GroupSession extends EventTarget {
     session.addEventListener('message', (event) => {
       this.#onMessage(event.detail, key).catch(() => {});
     });
+    // Binary frames matter too: a member serving file chunks to another member
+    // sends them over this link, and they are not control messages.
+    session.addEventListener('frame', (event) => {
+      this.#emit('frame', { data: event.detail.data, peerKey: key, session });
+    });
     session.addEventListener('close', () => {
       this.links.delete(key);
       const member = this.members.get(key);

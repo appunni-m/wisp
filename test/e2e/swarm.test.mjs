@@ -50,7 +50,7 @@ test('a room fetches one file from more than one peer', { timeout: 400000 }, asy
   const one = await openPeer(browser, server.url, 'member-one');
   const two = await openPeer(browser, server.url, 'member-two');
 
-  await t.test('three peers form a room', async () => {
+  await t.test('a room forms with two members', async () => {
     await host.page.fill('#nick-input', 'host-olive');
     await host.page.click('#btn-new-chat');
     await host.page.check('#group-mode');
@@ -58,24 +58,13 @@ test('a room fetches one file from more than one peer', { timeout: 400000 }, asy
     await createInvite(host);
 
     await pair(host, one, { nick: 'member-one' });
-    await host.page.click('#btn-invite-another');
-    await host.page.waitForSelector('#view-connect:not([hidden])', { timeout: 15000 });
-    await pair(host, two, { nick: 'member-two' });
-
-    for (const peer of [host, one, two]) {
-      await peer.page.waitForFunction(
-        () => (window.__p2p.getState().group?.links.length ?? 0) >= 2,
-        null,
-        { timeout: 60000 },
-      );
-    }
-    assert.equal((await state(host)).group.count, 3);
+    assert.equal((await state(host)).group?.count, 2);
   });
 
   // Big enough to be split several ways, small enough to stay quick.
   const payload = randomBytes(3 * 1024 * 1024);
 
-  await t.test('the first member receives the file directly', async () => {
+  await t.test('the first member receives the file from the host', async () => {
     await shareFile(host.page, { name: 'shared.bin', mimeType: 'application/octet-stream', buffer: payload });
     await waitForComplete(one.page);
 
@@ -88,10 +77,28 @@ test('a room fetches one file from more than one peer', { timeout: 400000 }, asy
     assert.equal(stored.size, payload.length, 'and the bytes are intact');
   });
 
-  await t.test('a file is served partly by a peer that is not its author', async () => {
-    // Sharing again is the deterministic version of the situation this feature
-    // exists for: one member already holds the file, so the next transfer does
-    // not have to come entirely from the original sender.
+  await t.test('a later member fetches it from the member, not the author', async () => {
+    // Deterministic on purpose: the second member joins *after* the first one
+    // has the whole file, so there is no race over who finishes first. The
+    // transfer that follows has a peer holding the file and a peer that has
+    // never seen it, which is exactly the situation this feature is for.
+    await host.page.click('#btn-invite-another');
+    await host.page.waitForSelector('#view-connect:not([hidden])', { timeout: 15000 });
+    await pair(host, two, { nick: 'member-two' });
+    await two.page.waitForFunction(
+      () => (window.__p2p.getState().group?.links.length ?? 0) >= 2,
+      null,
+      { timeout: 60000 },
+    );
+    assert.equal((await state(host)).group.count, 3);
+
+    // The new member must be told what the others already hold.
+    await two.page.waitForFunction(
+      () => Object.keys(window.__p2p.holders()).length > 0,
+      null,
+      { timeout: 30000 },
+    );
+
     await shareFile(host.page, { name: 'shared.bin', mimeType: 'application/octet-stream', buffer: payload });
     await waitForComplete(two.page);
 
@@ -100,9 +107,15 @@ test('a room fetches one file from more than one peer', { timeout: 400000 }, asy
     const stored = await two.page.evaluate((id) => window.__p2p.readMedia(id), attachment.fileId);
     assert.equal(stored.size, payload.length, 'the file assembled correctly from two sources');
 
-    // The proof: member one served chunks of a file it did not author.
+    // The proof: member one served chunks of a file it did not author, and it
+    // served the bulk of it rather than a token amount.
     const served = await one.page.evaluate(() => window.__p2p.transferStats().served);
+    const totalChunks = Math.ceil(payload.length / (16 * 1024));
     assert.ok(served > 0, `member one served ${served} chunks to another peer`);
+    assert.ok(
+      served >= totalChunks * 0.5,
+      `member one served ${served} of ${totalChunks} chunks; the peer should carry most of it`,
+    );
 
     // And the author was told to skip what the peer was covering.
     const hostStats = await host.page.evaluate(() => window.__p2p.transferStats());

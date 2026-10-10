@@ -328,6 +328,60 @@ message expires, the sweeper drops any stored blob nothing points at any more.
 
 ---
 
+## Continuous integration
+
+Two workflows in `.github/workflows`:
+
+| Workflow | Trigger | What it does |
+|---|---|---|
+| **CI** | every push to `main` and every pull request | unit tests, the browser suite on the runner's own Chrome, and a debug APK uploaded as an artifact |
+| **Release** | a `v*` tag, or manually | a release APK, signed if the keystore secrets are set, attached to the GitHub release |
+
+A third job, **Android end-to-end**, installs the APK on an emulator and runs the
+`test:android` suite. It only runs on `workflow_dispatch`, because an emulator
+takes minutes and should verify a release rather than block a merge. Trigger it
+by hand from the Actions tab when you want it.
+
+### What CI needs
+
+Nothing but the repository. GitHub's Ubuntu runners already have Google Chrome
+and the Android SDK, and a **debug APK is signed with an automatically generated
+debug keystore**, so no secrets are involved. The workflow installs
+`platforms;android-36` and `build-tools;36.0.0` because the Capacitor project
+targets API 36 and the preinstalled image may lag behind.
+
+The order matters: `dist/` and the Capacitor asset directory are build outputs
+and are not committed, so the APK job runs `npm run build:web` and `npx cap sync
+android` before Gradle.
+
+### Optional: a signed release APK
+
+Debug APKs are fine for testing and cannot be published. To produce an installable
+release build, add four repository secrets under **Settings → Secrets and
+variables → Actions**:
+
+| Secret | What it is |
+|---|---|
+| `ANDROID_KEYSTORE_BASE64` | your `.jks` file, base64 encoded: `base64 -i release.jks \| pbcopy` |
+| `ANDROID_KEYSTORE_PASSWORD` | the store password |
+| `ANDROID_KEY_ALIAS` | the key alias |
+| `ANDROID_KEY_PASSWORD` | the key password |
+
+Create the keystore once, and keep it somewhere you will not lose it — Android
+will not accept an update signed with a different key:
+
+```bash
+keytool -genkeypair -v -keystore release.jks -alias wisp \
+  -keyalg RSA -keysize 2048 -validity 10000
+```
+
+Without those secrets the Release workflow still succeeds: it builds an unsigned
+APK, names it `-UNSIGNED` so nobody tries to install it, and says so in the log.
+The signing config only engages when `WISP_KEYSTORE` is set, so a fork builds
+with no secrets at all.
+
+---
+
 ## The shell
 
 The whole app follows the layout people already know, rather than inventing one:

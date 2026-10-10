@@ -1054,6 +1054,9 @@ function wireGroup(group) {
   group.addEventListener('peer-message', ({ detail }) => {
     routeMessage(detail.session, detail.message);
   });
+  group.addEventListener('frame', ({ detail }) => {
+    receiveFileChunk(detail.session, detail.data);
+  });
   group.addEventListener('message', async ({ detail }) => {
     const chat = state.chats.get(chatIdForGroup(group));
     if (!chat || chat.kind !== 'room') return;
@@ -1076,6 +1079,9 @@ function wireGroup(group) {
     renderGroupPanel();
     renderChatHeader();
     updateComposerState();
+    // Somebody new cannot know what was shared before they arrived: the
+    // announcement only reached whoever was connected at the time. Say it again.
+    reannounceHoldings().catch(() => {});
   });
   group.addEventListener('warning', ({ detail }) => toast(detail.message));
 }
@@ -1410,9 +1416,24 @@ async function receiveFileOffer(session, msg) {
     return;
   }
 
+  const transfer = new IncomingTransfer({
+    offer,
+    onProgress: (progress) => setProgress(chatId, message.id, progress, 'receiving'),
+    onComplete: () => finishIncoming(session, chatId, message.id, offer),
+    onError: (error) => failAttachment(chatId, message.id, error.message),
+  });
+  const entry = { transfer, chatId, messageId: message.id, offer };
+
+  // Registered before anything is requested from anybody: the replies from other
+  // peers arrive tagged with ids that have to already be known here, or they are
+  // dropped on the floor.
+  state.receiving.set(msg.transferId, entry);
+
+  const held = await state.transfers.heldSequences(offer.fileId);
+  transfer.seed(held);
+
   // In a room, other members may already hold this file: take shares from them
   // and tell the original sender to skip what they are covering.
-  let held = await state.transfers.heldSequences(offer.fileId);
   let claimed = held;
   if (state.group && chat.kind === 'room') {
     claimed = await requestFromPeers(offer);
@@ -1424,15 +1445,6 @@ async function receiveFileOffer(session, msg) {
     bitmap: b64urlEncode(encodeBitmap(claimed, offer.chunks)),
   });
 
-  const transfer = new IncomingTransfer({
-    offer,
-    onProgress: (progress) => setProgress(chatId, message.id, progress, 'receiving'),
-    onComplete: () => finishIncoming(session, chatId, message.id, offer),
-    onError: (error) => failAttachment(chatId, message.id, error.message),
-  });
-  transfer.seed(held);
-
-  state.receiving.set(msg.transferId, { transfer, chatId, messageId: message.id, offer });
   if (transfer.progress >= 1) await finishIncoming(session, chatId, message.id, offer);
   if (state.activeChatId === chatId) renderConversation();
 }
@@ -1916,6 +1928,14 @@ function announceAvailability(chatId, offer) {
     mime: offer.mime,
   });
   noteHolder(offer.fileId, myKeyHex());
+}
+
+/** Re-state which files we hold, so late arrivals can fetch them from us. */
+async function reannounceHoldings() {
+  if (!state.group) return;
+  for (const fileId of await state.transfers.mediaIds()) {
+    state.group.flood({ t: TRANSFER.AVAILABLE, fileId });
+  }
 }
 
 function receiveAvailable(session, msg) {

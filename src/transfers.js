@@ -17,7 +17,7 @@
  * peer that already has a file can say so without receiving it again.
  */
 
-import { idbGet, idbSet, idbDelete, idbKeysFrom, idbAll } from './store.js';
+import { idbGet, idbSet, idbDelete, idbKeysFrom, idbAll, idbKeys } from './store.js';
 
 export const chunkKey = (fileId, sequence) => `${fileId}:${sequence}`;
 
@@ -88,6 +88,11 @@ export class TransferStore {
 
   async hasMedia(fileId) {
     return Boolean(await idbGet('media', fileId));
+  }
+
+  /** Every file this device holds, for announcing itself as a source. */
+  async mediaIds() {
+    return (await idbKeys('media')) ?? [];
   }
 
   async dropMedia(fileId) {
