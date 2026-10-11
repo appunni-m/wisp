@@ -81,6 +81,14 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      # The protocol module is plain JVM Kotlin, but the same Gradle project
+      # contains Android modules, and configuring those wants a platform present.
+      - name: Install the SDK the project targets
+        run: |
+          SDKMANAGER="$(command -v sdkmanager || echo "${ANDROID_HOME:-/usr/local/lib/android/sdk}/cmdline-tools/latest/bin/sdkmanager")"
+          yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+          "$SDKMANAGER" --install "platforms;android-36" "build-tools;36.0.0"
+
       - name: Kotlin tests against the web client's vectors
         run: ./gradlew :protocol:test --no-daemon
         working-directory: native
@@ -149,6 +157,48 @@ jobs:
         with:
           name: wisp-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+  # The native client, which is where the Android app is going. Built on every
+  # push so it cannot rot while the cut-over is pending.
+  native-apk:
+    name: Native Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Install the SDK the project targets
+        run: |
+          SDKMANAGER="$(command -v sdkmanager || echo "${ANDROID_HOME:-/usr/local/lib/android/sdk}/cmdline-tools/latest/bin/sdkmanager")"
+          yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+          "$SDKMANAGER" --install "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Build
+        run: ./gradlew :app:assembleDebug --no-daemon
+        working-directory: native
+
+      - name: Report what was built
+        run: |
+          ls -lh native/app/build/outputs/apk/debug/*.apk
+          {
+            echo "### Native APK"
+            echo '```'
+            ls -lh native/app/build/outputs/apk/debug/*.apk
+            echo '```'
+            echo "Per ABI, because libwebrtc ships native code for each."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wisp-native-apk
+          path: native/app/build/outputs/apk/debug/app-arm64-v8a-debug.apk
           if-no-files-found: error
 
   # Proves the checks in the README are true: two peers pair, a room forms, and a
