@@ -19,7 +19,9 @@
     "vectors": "node tools/make-vectors.mjs",
     "test:native": "cd native && ./gradlew :protocol:test --no-daemon",
     "verify:native": "node tools/verify-native-codes.mjs",
-    "test:interop": "npm run test:native && npm run verify:native"
+    "test:interop": "npm run test:native && npm run verify:native",
+    "test:native-pair": "node tools/native-pair-check.mjs",
+    "build:native": "cd native && ./gradlew :app:assembleDebug"
   },
   "devDependencies": {
     "@capacitor/android": "^8.5.3",

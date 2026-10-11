@@ -19,3 +19,9 @@ rootProject.name = "wisp"
 // that has to agree with the web client byte for byte, so it is the part that
 // should be testable in milliseconds without a device.
 include(":protocol")
+
+// The WebRTC transport, wrapped so the app never touches org.webrtc directly.
+include(":transport")
+
+// The Android app itself.
+include(":app")
