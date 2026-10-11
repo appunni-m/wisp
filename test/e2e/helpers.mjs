@@ -22,7 +22,31 @@ export function findChrome() {
   throw new Error(`no Chrome found; set CHROME_PATH. Looked in:\n  ${CHROME_PATHS.join('\n  ')}`);
 }
 
-export const launchBrowser = () => chromium.launch({ executablePath: findChrome(), headless: true });
+/**
+ * Launch Chrome with the flags a constrained machine needs.
+ *
+ * Continuous integration runners give a container 64 MB of `/dev/shm`, and
+ * Chrome will happily fill it and have its renderers killed — which shows up as
+ * a test that hangs rather than one that fails with a reason. The backgrounding
+ * flags matter here too, because these tests deliberately keep several pages
+ * open at once and a throttled one stops answering.
+ */
+export const launchBrowser = (options = {}) =>
+  chromium.launch({
+    executablePath: findChrome(),
+    headless: true,
+    args: [
+      '--disable-dev-shm-usage',
+      '--no-sandbox',
+      '--disable-gpu',
+      '--mute-audio',
+      '--disable-background-timer-throttling',
+      '--disable-backgrounding-occluded-windows',
+      '--disable-renderer-backgrounding',
+      ...(options.args ?? []),
+    ],
+    ...options,
+  });
 
 /** Each peer gets its own browser context so IndexedDB (and its identity key) is isolated. */
 export async function openPeer(browser, baseUrl, label) {

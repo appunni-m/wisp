@@ -17,9 +17,9 @@ jobs:
     name: Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -39,9 +39,23 @@ jobs:
           /usr/bin/google-chrome --version
 
       - name: Browser end-to-end tests
-        run: npm run test:e2e
-        env:
-          CHROME_PATH: /usr/bin/google-chrome
+        run: |
+          set -o pipefail
+          npm run test:e2e 2>&1 | tee /tmp/e2e.log
+
+      # Without this a failure is a red cross and nothing else, which is no help
+      # to anybody without admin rights to read the full log.
+      - name: Explain a failure
+        if: failure()
+        run: |
+          SUMMARY="$(grep -E '^✖|AssertionError|Error:|Timeout' /tmp/e2e.log | head -25 | tr '\n' ' ' | cut -c1-900)"
+          echo "::error title=End-to-end failure::${SUMMARY:-see the log}"
+          {
+            echo '### Browser test failure'
+            echo '```'
+            grep -B2 -A12 '^✖ ' /tmp/e2e.log | head -60
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
   # The web app has no build step, but the APK needs the assets collected, the
   # Capacitor project synced, and Gradle to run.
@@ -49,22 +63,31 @@ jobs:
     name: Android APK
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'
 
-      - uses: android-actions/setup-android@v3
-
+      # The runner image already carries the Android SDK, so this only has to
+      # add the platform the project targets. It is located rather than assumed,
+      # because the path has moved between image versions.
       - name: Install the SDK the project targets
-        run: sdkmanager --install "platforms;android-36" "build-tools;36.0.0"
+        run: |
+          SDKMANAGER="$(command -v sdkmanager || echo "${ANDROID_HOME:-/usr/local/lib/android/sdk}/cmdline-tools/latest/bin/sdkmanager")"
+          if [ ! -x "$SDKMANAGER" ]; then
+            echo "::error::no sdkmanager found; ANDROID_HOME=$ANDROID_HOME"
+            exit 1
+          fi
+          echo "using $SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+          "$SDKMANAGER" --install "platforms;android-36" "build-tools;36.0.0"
 
       - name: Install dependencies
         run: npm ci
@@ -105,24 +128,23 @@ jobs:
     # something that should block a merge.
     if: github.event_name == 'workflow_dispatch'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'
 
-      - uses: android-actions/setup-android@v3
-
       - name: Install the SDK and an emulator image
         run: |
-          sdkmanager --install "platforms;android-36" "build-tools;36.0.0" "emulator" "system-images;android-35;google_apis;x86_64"
-          yes | sdkmanager --licenses > /dev/null
+          SDKMANAGER="$(command -v sdkmanager || echo "${ANDROID_HOME:-/usr/local/lib/android/sdk}/cmdline-tools/latest/bin/sdkmanager")"
+          yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+          "$SDKMANAGER" --install "platforms;android-36" "build-tools;36.0.0" "emulator" "system-images;android-35;google_apis;x86_64"
 
       - run: npm ci
       - run: npm run build:web
