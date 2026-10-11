@@ -60,6 +60,37 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
+  # The native client's protocol module: the part that has to agree with the web
+  # client byte for byte. It is a plain JVM module, so this is fast, and running
+  # it on every push is what stops the two implementations drifting apart.
+  native-protocol:
+    name: Native protocol interop
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Kotlin tests against the web client's vectors
+        run: ./gradlew :protocol:test --no-daemon
+        working-directory: native
+
+      - name: Check the vectors still match the web client
+        run: node tools/make-vectors.mjs --check
+
+      - name: Verify codes the Kotlin client signed, using the web client
+        run: node tools/verify-native-codes.mjs
+
   # The web app has no build step, but the APK needs the assets collected, the
   # Capacitor project synced, and Gradle to run.
   apk:

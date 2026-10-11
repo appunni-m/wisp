@@ -15,7 +15,11 @@
     "test": "node --test --test-force-exit test/unit/*.test.mjs",
     "test:e2e": "node --test --test-force-exit --test-concurrency=1 test/e2e/handshake.test.mjs test/e2e/group.test.mjs test/e2e/pairing.test.mjs test/e2e/mobile.test.mjs test/e2e/chatlist.test.mjs test/e2e/media.test.mjs test/e2e/swarm.test.mjs test/e2e/call.test.mjs",
     "test:android": "node --test --test-force-exit test/e2e/android.test.mjs",
-    "test:all": "npm test && npm run test:e2e && npm run test:android"
+    "test:all": "npm test && npm run test:e2e && npm run test:android",
+    "vectors": "node tools/make-vectors.mjs",
+    "test:native": "cd native && ./gradlew :protocol:test --no-daemon",
+    "verify:native": "node tools/verify-native-codes.mjs",
+    "test:interop": "npm run test:native && npm run verify:native"
   },
   "devDependencies": {
     "@capacitor/android": "^8.5.3",

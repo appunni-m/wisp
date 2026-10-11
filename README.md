@@ -328,13 +328,82 @@ message expires, the sweeper drops any stored blob nothing points at any more.
 
 ---
 
+## The native Android client
+
+The Android app is being rewritten natively: Kotlin, Jetpack Compose and
+libwebrtc, with no WebView. The web client stays, so a phone and a browser can
+still talk to each other — and so the native client is verified against an
+independent implementation rather than against itself.
+
+That is a rewrite rather than a change, and it is staged, because the only part
+that is genuinely hard is the part that has to agree with the other client.
+
+### Stage 1 — the wire format (done)
+
+The invite format is ported to Kotlin, in `native/protocol/`, and **held to the
+web client's own output** rather than to a description of it:
+
+```
+tools/make-vectors.mjs   ->  native/protocol/src/test/resources/vectors.json
+                                  |
+                                  v
+                        Kotlin tests must encode the same bytes
+                                  |
+                                  v
+tools/verify-native-codes.mjs  <-  codes the Kotlin client signed
+```
+
+- The vectors are produced by the JavaScript implementation: real signed codes,
+  every address kind, contact details with non-ASCII text, and a group invite.
+- The Kotlin tests assert the encoder writes **byte-for-byte identical bodies**,
+  that the web client's signatures verify, and that every field and candidate
+  survives the round trip.
+- In the other direction, the Kotlin suite writes out a code it signed and
+  `tools/verify-native-codes.mjs` opens it with the web client. A promise that
+  two implementations agree is worth nothing until each has read the other's
+  output.
+
+Two details that would have been found on somebody's phone rather than in a test:
+
+- **Signatures.** WebCrypto emits `r||s`, 64 bytes; Java's `SHA256withECDSA`
+  emits a DER sequence of variable length. The invite reserves exactly 64 bytes,
+  so the port converts between them, and there is a test for it.
+- **The session id is unsigned.** Half its range is above `Long.MAX_VALUE`, so
+  parsing one as a signed long throws. The wire code reads the bits correctly;
+  the test that parsed it with `toLong()` was the thing that was wrong.
+
+`npm run test:interop` runs both directions and is part of CI, so the two
+implementations cannot drift apart quietly.
+
+### Stage 2 — the connection (next)
+
+`org.webrtc:google-webrtc` is no longer published to Maven Central; the
+maintained build is `io.github.webrtc-sdk:android`. The next step is a data
+channel between the native client and the browser, using the same SDP templating
+the web client uses, with an emulator-to-desktop interop test as the proof.
+
+### Stage 3 onwards
+
+| Stage | What |
+|---|---|
+| 3 | Compose UI: chat list, conversation, pairing screens |
+| 4 | Media: chunked, resumable, content-addressed transfers, then the room swarm |
+| 5 | Calls: libwebrtc media, the quality profiles, the call screens |
+| 6 | Cut over: the Capacitor app is deleted and the native one takes its place |
+
+Nothing in stages 3 to 6 is architecturally uncertain; they are the same
+behaviours the web client already has, written again in Kotlin. Stage 2 is the
+one that could still surprise, which is why it is next.
+
+---
+
 ## Continuous integration
 
 Two workflows in `.github/workflows`:
 
 | Workflow | Trigger | What it does |
 |---|---|---|
-| **CI** | every push to `main` and every pull request | unit tests, the browser suite on the runner's own Chrome, and a debug APK uploaded as an artifact |
+| **CI** | every push to `main` and every pull request | unit tests, the browser suite on the runner's own Chrome, the native protocol interop tests, and a debug APK uploaded as an artifact |
 | **Release** | a `v*` tag, or manually | a release APK, signed if the keystore secrets are set, attached to the GitHub release |
 
 A third job, **Android end-to-end**, installs the APK on an emulator and runs the
