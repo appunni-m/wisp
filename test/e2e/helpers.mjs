@@ -43,10 +43,32 @@ export const launchBrowser = (options = {}) =>
       '--disable-background-timer-throttling',
       '--disable-backgrounding-occluded-windows',
       '--disable-renderer-backgrounding',
+      // Chrome hides host candidates behind mDNS names, which two isolated
+      // browser profiles cannot resolve. With this, peers on one machine reach
+      // each other over the loopback address and the tests need no STUN server
+      // and no network at all.
+      '--disable-features=WebRtcHideLocalIpsWithMdns',
       ...(options.args ?? []),
     ],
     ...options,
   });
+
+/**
+ * Flags that give Chrome a synthetic camera and microphone, so a call can be
+ * tested without hardware and without a permission prompt.
+ */
+export const FAKE_MEDIA_ARGS = [
+  '--use-fake-device-for-media-stream',
+  '--use-fake-ui-for-media-stream',
+  '--autoplay-policy=no-user-gesture-required',
+];
+
+/**
+ * Peers in these tests share a machine, so host candidates are enough. With
+ * mDNS obfuscation off and no ICE servers configured, the suite never touches
+ * the network — a runner that cannot reach a STUN server is not a failing test.
+ */
+export const testUrl = (url) => `${url}${url.includes('?') ? '&' : '?'}ice=none`;
 
 /** Each peer gets its own browser context so IndexedDB (and its identity key) is isolated. */
 export async function openPeer(browser, baseUrl, label) {
@@ -56,7 +78,7 @@ export async function openPeer(browser, baseUrl, label) {
   page.on('console', (message) => {
     if (message.type() === 'error') console.error(`[${label}] console error: ${message.text()}`);
   });
-  await page.goto(baseUrl, { waitUntil: 'load' });
+  await page.goto(testUrl(baseUrl), { waitUntil: 'load' });
   await page.evaluate(() => window.__p2p.ready);
   // The identity drawer starts collapsed; open it the way a person would.
   await page.click('#btn-settings');

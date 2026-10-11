@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
 
 import { createStaticServer } from '../../serve.mjs';
-import { createInvite } from './helpers.mjs';
+import { createInvite, testUrl } from './helpers.mjs';
 
 const PROJECT_ROOT = fileURLToPath(new URL('../../', import.meta.url));
 
@@ -42,7 +42,7 @@ async function openPeer(browser, baseUrl, label) {
   page.on('console', (message) => {
     if (message.type() === 'error') console.error(`[${label}] console error: ${message.text()}`);
   });
-  await page.goto(baseUrl, { waitUntil: 'load' });
+  await page.goto(testUrl(baseUrl), { waitUntil: 'load' });
   await page.evaluate(() => window.__p2p.ready);
   // The identity drawer starts collapsed; open it the way a person would.
   await page.click('#btn-settings');

@@ -48,12 +48,15 @@ jobs:
       - name: Explain a failure
         if: failure()
         run: |
-          SUMMARY="$(grep -E '^✖|AssertionError|Error:|Timeout' /tmp/e2e.log | head -25 | tr '\n' ' ' | cut -c1-900)"
-          echo "::error title=End-to-end failure::${SUMMARY:-see the log}"
+          # Node's reporter prints a complete block after this heading, which is
+          # the part worth reading: the test name, the timeout, the selector.
+          BLOCK="$(awk '/failing tests:/{found=1} found' /tmp/e2e.log | head -45)"
+          [ -n "$BLOCK" ] && BLOCK="$(printf '%s' "$BLOCK" | tr '\n' ' ' | tr -s ' ' | cut -c1-1400)"
+          echo "::error title=End-to-end failure::${BLOCK:-no failure block found; see the log}"
           {
             echo '### Browser test failure'
             echo '```'
-            grep -B2 -A12 '^✖ ' /tmp/e2e.log | head -60
+            awk '/failing tests:/{found=1} found' /tmp/e2e.log | head -60
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 

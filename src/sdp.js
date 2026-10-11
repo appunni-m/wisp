@@ -32,7 +32,9 @@ export const DEFAULT_ICE_SERVERS = [
 let iceServers = DEFAULT_ICE_SERVERS;
 
 export function configureIceServers(servers) {
-  if (!Array.isArray(servers) || servers.length === 0) return currentIceServers();
+  if (!Array.isArray(servers)) return currentIceServers();
+  // An empty list is meaningful: it means host candidates only, which is what a
+  // test on one machine needs and what `?ice=none` asks for.
   iceServers = servers;
   return iceServers;
 }
@@ -46,6 +48,9 @@ export const currentIceServers = () => iceServers;
 export function iceServersFromParams(params) {
   const raw = params.get('ice');
   if (!raw) return null;
+  // `?ice=none` means do not use any server: two peers on one machine can reach
+  // each other on host candidates alone, without waiting for a STUN reply.
+  if (raw.trim().toLowerCase() === 'none') return [];
   const urls = raw.split(',').map((value) => value.trim()).filter(Boolean);
   if (!urls.length) return null;
   const entry = { urls };
