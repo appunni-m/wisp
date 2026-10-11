@@ -373,44 +373,58 @@ Two details that would have been found on somebody's phone rather than in a test
   the test that parsed it with `toLong()` was the thing that was wrong.
 
 `npm run test:interop` runs both directions and is part of CI, so the two
-implementations cannot drift apart quietly.
+implementations cannot drift apart quietly. It covers the invite format and the
+session descriptions alike — 23 tests over bytes that another implementation
+produced.
 
-### Stage 2 — the connection
+### Stage 2 — the session descriptions (done)
 
-`org.webrtc:google-webrtc` is no longer published to Maven Central — it has zero
-artifacts. The options are a community mirror of the C++ library, or compiling
-the transport ourselves in Rust. `native/rust-spike/` measures both and proves
-the second one works:
+A browser rejects a session description that is not exactly right, and "nearly
+right" is not a category it accepts. So the SDP templating is ported the same way
+the invite format was, and held to the same standard: `native/protocol/Sdp.kt`
+rebuilds a description **byte for byte** the way the web client does, checked
+against vectors generated from `src/sdp.js` and a real Chrome offer kept as a
+fixture.
 
-| arm64, stripped | Size |
-|---|---|
-| Rust (`webrtc` + `sonora` + tokio) | **4.86 MB** |
-| libwebrtc (C++) | 10.85 MB |
+That includes the parts that are easy to get subtly wrong:
 
-and, more to the point, a Rust peer and a real Chrome **complete ICE and DTLS and
-exchange a message both ways**. That test runs in CI on every push, because a
-claim that two implementations interoperate is worth nothing until it is run.
+- **Candidate priorities are never transmitted.** Both sides recompute them from
+  RFC 8445, so a disagreement would quietly change which network path gets
+  chosen — which is why there is a test that both implementations produce the
+  same numbers.
+- **The origin line's version is bumped** and its session id replaced, which is
+  what tells the far side this is a new description rather than the one it
+  already has.
+- **Private addresses are classified** so the app can say an invite will only
+  work on the same network, rather than letting somebody wonder why nothing
+  connects.
 
-The size argument is real but smaller than it sounds — 41.7 MB is the build-time
-AAR, and a phone installs about 11 MB of it. The better arguments are that a Rust
-core is compiled from source with no third-party blob, and that one core could
-serve the Android and desktop clients instead of two implementations of the same
-wire format.
+### Stage 3 — the connection (next)
 
-What is *not* settled is media: nothing in the spike encodes a picture, and
-`sonora` is a 0.2.0 pure-Rust port of WebRTC's echo cancellation against fifteen
-years of tuning in the C++ original. So the plan is a Rust core for the
-connection and file transfer, where it is already proven, and a decision about
-calls after testing audio on a real phone.
+The Kotlin side now knows how to encode an invite and rebuild a description. What
+is missing is the runtime half: capturing a skeleton from libwebrtc on the
+device, and wrapping `org.webrtc.PeerConnection` in something the app can drive.
+
+**libwebrtc is the chosen transport.** A Rust alternative was measured rather
+than argued about — `native/rust-spike/` builds the same stack in 4.86 MB against
+libwebrtc's 10.85 MB per ABI — and 10.85 MB is a fair price for software codecs
+alongside the hardware ones, mature congestion control, and audio processing with
+fifteen years of tuning behind it. The spike stays in the repository as the record
+of that decision.
+
+The measurement is worth keeping in view for one reason: the number that started
+the question was ~100 MB, and it turned out to be 41.7 MB in the build and
+10.9 MB on an arm64 device. Being wrong about that by a factor of ten is a good
+argument for measuring before deciding.
 
 ### Stage 3 onwards
 
 | Stage | What |
 |---|---|
-| 3 | Compose UI: chat list, conversation, pairing screens |
-| 4 | Media: chunked, resumable, content-addressed transfers, then the room swarm |
-| 5 | Calls: libwebrtc media, the quality profiles, the call screens |
-| 6 | Cut over: the Capacitor app is deleted and the native one takes its place |
+| 4 | Compose UI: chat list, conversation, pairing screens |
+| 5 | Media: chunked, resumable, content-addressed transfers, then the room swarm |
+| 6 | Calls: libwebrtc media, the quality profiles, the call screens |
+| 7 | Cut over: the Capacitor app is deleted and the native one takes its place |
 
 Nothing in stages 3 to 6 is architecturally uncertain; they are the same
 behaviours the web client already has, written again in Kotlin. Stage 2 is the

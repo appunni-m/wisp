@@ -117,7 +117,8 @@ private fun ipv4ToBytes(address: String): ByteArray {
 
 private fun bytesToIpv4(bytes: ByteArray): String = bytes.joinToString(".") { (it.toInt() and 0xff).toString() }
 
-private fun classifyAddress(address: String): Int = when {
+/** Which of the three address forms a candidate holds. */
+internal fun classifyAddress(address: String): Int = when {
     Regex("^\\d{1,3}(\\.\\d{1,3}){3}$").matches(address) -> AddressKind.IPV4
     address.contains(':') -> AddressKind.IPV6
     else -> AddressKind.HOSTNAME

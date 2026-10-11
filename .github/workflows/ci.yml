@@ -91,35 +91,6 @@ jobs:
       - name: Verify codes the Kotlin client signed, using the web client
         run: node tools/verify-native-codes.mjs
 
-  # The decisive experiment for the native rewrite: a Rust peer and a real
-  # browser, over ICE and DTLS, exchanging a message both ways. Size and
-  # buildability were settled separately; this is the one that decides whether
-  # the native client can be pure Rust.
-  rust-browser-interop:
-    name: Rust to browser interop
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-
-      - run: npm ci
-
-      - name: Build the Rust peer
-        run: cargo build --release --bin interop
-        working-directory: native/rust-spike
-
-      - name: Offer a data channel to Chrome
-        run: node interop.mjs
-        working-directory: native/rust-spike
-        env:
-          CHROME_PATH: /usr/bin/google-chrome
-
   # The web app has no build step, but the APK needs the assets collected, the
   # Capacitor project synced, and Gradle to run.
   apk:

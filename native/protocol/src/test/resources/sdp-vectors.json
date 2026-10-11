@@ -1,0 +1,318 @@
+{
+  "note": "Generated from src/sdp.js. The skeleton is a real Chrome offer.",
+  "skeleton": "v=0\r\no=- 1290825415646382132 2 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\na=group:BUNDLE 0\r\na=extmap-allow-mixed\r\na=msid-semantic: WMS\r\nm=application 23546 UDP/DTLS/SCTP webrtc-datachannel\r\nc=IN IP4 49.207.219.250\r\na=candidate:4000953735 1 udp 2113937151 192.168.0.201 64115 typ host generation 0 network-cost 999\r\na=candidate:2744480775 1 udp 1677729535 49.207.219.250 23546 typ srflx raddr 192.168.0.201 rport 64115 generation 0 network-cost 999\r\na=ice-ufrag:nT1V\r\na=ice-pwd:jb6sC1qU00Jid3nV2ca1S1+1\r\na=ice-options:trickle\r\na=fingerprint:sha-256 94:CD:50:D1:19:8C:44:44:96:6C:21:0E:FA:05:43:56:26:1E:93:AA:D7:0A:57:7E:A6:7D:D6:7D:9A:A7:AC:20\r\na=setup:actpass\r\na=mid:0\r\na=sctp-port:5000\r\na=max-message-size:262144\r\n",
+  "extracted": {
+    "candidates": [
+      {
+        "foundation": "4000953735",
+        "component": 1,
+        "transport": "udp",
+        "priority": 2113937151,
+        "address": "192.168.0.201",
+        "port": 64115,
+        "type": "host",
+        "addressKind": 0
+      },
+      {
+        "foundation": "2744480775",
+        "component": 1,
+        "transport": "udp",
+        "priority": 1677729535,
+        "address": "49.207.219.250",
+        "port": 23546,
+        "type": "srflx",
+        "addressKind": 0
+      }
+    ],
+    "sessionId": "1290825415646382132",
+    "ufrag": "nT1V",
+    "pwd": "jb6sC1qU00Jid3nV2ca1S1+1",
+    "fingerprint": {
+      "algo": "sha-256",
+      "value": "94:CD:50:D1:19:8C:44:44:96:6C:21:0E:FA:05:43:56:26:1E:93:AA:D7:0A:57:7E:A6:7D:D6:7D:9A:A7:AC:20"
+    },
+    "setup": "actpass"
+  },
+  "build": {
+    "fields": {
+      "sessionId": "1234567890123456789",
+      "ufrag": "kOtLiN01",
+      "pwd": "kotlinpassword1234567890",
+      "fingerprint": {
+        "algo": "sha-256",
+        "value": "AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89"
+      },
+      "setup": "active",
+      "candidates": [
+        {
+          "type": "host",
+          "component": 1,
+          "address": "192.168.1.24",
+          "port": 54321,
+          "transport": "udp"
+        },
+        {
+          "type": "srflx",
+          "component": 1,
+          "address": "203.0.113.7",
+          "port": 41234,
+          "transport": "udp"
+        },
+        {
+          "type": "host",
+          "component": 1,
+          "address": "fe80::1c2d:3e4f:5a6b:7c8d",
+          "port": 9999,
+          "transport": "udp"
+        },
+        {
+          "type": "host",
+          "component": 1,
+          "address": "stun.example.net",
+          "port": 3478,
+          "transport": "udp"
+        }
+      ]
+    },
+    "expected": "v=0\r\no=- 1234567890123456789 2 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\na=group:BUNDLE 0\r\na=extmap-allow-mixed\r\na=msid-semantic: WMS\r\nm=application 23546 UDP/DTLS/SCTP webrtc-datachannel\r\nc=IN IP4 49.207.219.250\r\na=ice-ufrag:kOtLiN01\r\na=ice-pwd:kotlinpassword1234567890\r\na=ice-options:trickle\r\na=fingerprint:sha-256 AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89\r\na=setup:active\r\na=mid:0\r\na=sctp-port:5000\r\na=max-message-size:262144\r\na=candidate:2130706431 1 udp 2130706431 192.168.1.24 54321 typ host\r\na=candidate:1694498815 1 udp 1694498815 203.0.113.7 41234 typ srflx\r\na=candidate:2130706431 1 udp 2130706431 fe80::1c2d:3e4f:5a6b:7c8d 9999 typ host\r\na=candidate:2130706431 1 udp 2130706431 stun.example.net 3478 typ host\r\n"
+  },
+  "candidateLines": [
+    "a=candidate:3398650760 1 udp 2113937151 192.168.0.201 61043 typ host generation 0 network-cost 999",
+    "a=candidate:842163049 1 udp 1677729535 203.0.113.7 41234 typ srflx raddr 192.168.0.201 rport 61043 generation 0 network-cost 999",
+    "a=candidate:1510613869 1 udp 41885439 198.51.100.9 60000 typ relay raddr 0.0.0.0 rport 0 generation 0 network-cost 999",
+    "a=candidate:1 1 udp 2130706431 fe80::1c2d:3e4f:5a6b:7c8d 9999 typ host generation 0",
+    "a=candidate:2 1 udp 2130706431 stun.example.net 3478 typ host generation 0",
+    "a=candidate:3 1 tcp 2105458943 192.168.0.201 9 typ host tcptype active generation 0",
+    "not a candidate at all"
+  ],
+  "parsed": [
+    {
+      "line": "a=candidate:3398650760 1 udp 2113937151 192.168.0.201 61043 typ host generation 0 network-cost 999",
+      "parsed": {
+        "foundation": "3398650760",
+        "component": 1,
+        "transport": "udp",
+        "priority": 2113937151,
+        "address": "192.168.0.201",
+        "port": 61043,
+        "type": "host",
+        "addressKind": 0
+      }
+    },
+    {
+      "line": "a=candidate:842163049 1 udp 1677729535 203.0.113.7 41234 typ srflx raddr 192.168.0.201 rport 61043 generation 0 network-cost 999",
+      "parsed": {
+        "foundation": "842163049",
+        "component": 1,
+        "transport": "udp",
+        "priority": 1677729535,
+        "address": "203.0.113.7",
+        "port": 41234,
+        "type": "srflx",
+        "addressKind": 0
+      }
+    },
+    {
+      "line": "a=candidate:1510613869 1 udp 41885439 198.51.100.9 60000 typ relay raddr 0.0.0.0 rport 0 generation 0 network-cost 999",
+      "parsed": {
+        "foundation": "1510613869",
+        "component": 1,
+        "transport": "udp",
+        "priority": 41885439,
+        "address": "198.51.100.9",
+        "port": 60000,
+        "type": "relay",
+        "addressKind": 0
+      }
+    },
+    {
+      "line": "a=candidate:1 1 udp 2130706431 fe80::1c2d:3e4f:5a6b:7c8d 9999 typ host generation 0",
+      "parsed": {
+        "foundation": "1",
+        "component": 1,
+        "transport": "udp",
+        "priority": 2130706431,
+        "address": "fe80::1c2d:3e4f:5a6b:7c8d",
+        "port": 9999,
+        "type": "host",
+        "addressKind": 1
+      }
+    },
+    {
+      "line": "a=candidate:2 1 udp 2130706431 stun.example.net 3478 typ host generation 0",
+      "parsed": {
+        "foundation": "2",
+        "component": 1,
+        "transport": "udp",
+        "priority": 2130706431,
+        "address": "stun.example.net",
+        "port": 3478,
+        "type": "host",
+        "addressKind": 2
+      }
+    },
+    {
+      "line": "a=candidate:3 1 tcp 2105458943 192.168.0.201 9 typ host tcptype active generation 0",
+      "parsed": {
+        "foundation": "3",
+        "component": 1,
+        "transport": "tcp",
+        "priority": 2105458943,
+        "address": "192.168.0.201",
+        "port": 9,
+        "type": "host",
+        "addressKind": 0
+      }
+    },
+    {
+      "line": "not a candidate at all",
+      "parsed": null
+    }
+  ],
+  "formatted": [
+    {
+      "candidate": {
+        "type": "host",
+        "component": 1,
+        "address": "192.168.1.24",
+        "port": 54321,
+        "transport": "udp"
+      },
+      "priority": 2130706431,
+      "line": "a=candidate:2130706431 1 udp 2130706431 192.168.1.24 54321 typ host"
+    },
+    {
+      "candidate": {
+        "type": "srflx",
+        "component": 1,
+        "address": "203.0.113.7",
+        "port": 41234,
+        "transport": "udp"
+      },
+      "priority": 1694498815,
+      "line": "a=candidate:1694498815 1 udp 1694498815 203.0.113.7 41234 typ srflx"
+    },
+    {
+      "candidate": {
+        "type": "host",
+        "component": 1,
+        "address": "fe80::1c2d:3e4f:5a6b:7c8d",
+        "port": 9999,
+        "transport": "udp"
+      },
+      "priority": 2130706431,
+      "line": "a=candidate:2130706431 1 udp 2130706431 fe80::1c2d:3e4f:5a6b:7c8d 9999 typ host"
+    },
+    {
+      "candidate": {
+        "type": "host",
+        "component": 1,
+        "address": "stun.example.net",
+        "port": 3478,
+        "transport": "udp"
+      },
+      "priority": 2130706431,
+      "line": "a=candidate:2130706431 1 udp 2130706431 stun.example.net 3478 typ host"
+    }
+  ],
+  "priorities": [
+    {
+      "type": "host",
+      "value": 2130706431
+    },
+    {
+      "type": "prflx",
+      "value": 1862270975
+    },
+    {
+      "type": "srflx",
+      "value": 1694498815
+    },
+    {
+      "type": "relay",
+      "value": 16777215
+    }
+  ],
+  "dedupe": [
+    {
+      "type": "host",
+      "component": 1,
+      "address": "10.0.0.1",
+      "port": 1
+    },
+    {
+      "type": "host",
+      "component": 1,
+      "address": "10.0.0.1",
+      "port": 2
+    },
+    {
+      "type": "srflx",
+      "component": 1,
+      "address": "10.0.0.1",
+      "port": 1
+    }
+  ],
+  "privateAddresses": [
+    {
+      "address": "10.0.0.1",
+      "isPrivate": true
+    },
+    {
+      "address": "127.0.0.1",
+      "isPrivate": true
+    },
+    {
+      "address": "192.168.1.5",
+      "isPrivate": true
+    },
+    {
+      "address": "172.16.0.1",
+      "isPrivate": true
+    },
+    {
+      "address": "172.31.255.255",
+      "isPrivate": true
+    },
+    {
+      "address": "172.32.0.1",
+      "isPrivate": false
+    },
+    {
+      "address": "169.254.1.1",
+      "isPrivate": true
+    },
+    {
+      "address": "8.8.8.8",
+      "isPrivate": false
+    },
+    {
+      "address": "203.0.113.7",
+      "isPrivate": false
+    },
+    {
+      "address": "fe80::1",
+      "isPrivate": true
+    },
+    {
+      "address": "::1",
+      "isPrivate": true
+    },
+    {
+      "address": "fc00::1",
+      "isPrivate": true
+    },
+    {
+      "address": "fd12::1",
+      "isPrivate": true
+    },
+    {
+      "address": "2001:db8::1",
+      "isPrivate": false
+    },
+    {
+      "address": "stun.example.net",
+      "isPrivate": true
+    }
+  ]
+}

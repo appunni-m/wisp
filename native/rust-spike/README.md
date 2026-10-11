@@ -94,7 +94,19 @@ interoperates with Chrome over a data channel.
 - **Congestion control.** libwebrtc's bandwidth estimation and jitter buffer are
   mature and heavily deployed. `webrtc` has equivalents; they are younger.
 
-## Where this leaves the decision
+## The decision
+
+**libwebrtc was chosen.** 10.85 MB per ABI is acceptable for what it brings —
+software codecs as well as hardware ones, mature congestion control, and audio
+processing with fifteen years of tuning. The measurement above is why the
+question could be settled in a minute rather than an argument: the number was
+41.7 MB in the build and 10.9 MB on a device, not the ~100 MB that started this.
+
+This directory stays as the record of the evaluation, and `interop.rs` still runs
+if the question is ever reopened. It is no longer part of CI, because it guards
+nothing that ships.
+
+## What the spike established either way
 
 The size argument for Rust is real but smaller than it first appears: 4.86 MB
 against 10.85 MB, not 5 MB against 100 MB. The stronger arguments are that the

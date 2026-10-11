@@ -18,6 +18,15 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { webcrypto } from 'node:crypto';
 
 import { encodeInviteBody, decodeInviteBody, sealInvite, openInvite, KIND, ID_MODE } from '../src/payload.js';
+import {
+  buildSdpFromSkeleton,
+  computePriority,
+  dedupeCandidates,
+  extractSdpFields,
+  formatCandidateLine,
+  isPrivateAddress,
+  parseCandidateLine,
+} from '../src/sdp.js';
 import { bytesToHex } from '../src/codec.js';
 import { KEY_ALGO } from '../src/crypto.js';
 
@@ -112,6 +121,67 @@ INVITES.push({
   },
 });
 
+/**
+ * The session-description half of the format.
+ *
+ * The skeleton is a real one captured from Chrome and committed as a fixture,
+ * so regenerating these vectors never needs a browser — which matters, because
+ * CI checks them for drift on every push.
+ */
+function sdpVectors() {
+  const skeleton = readFileSync(new URL('../native/protocol/src/test/resources/sdp-skeleton.txt', import.meta.url), 'utf8');
+
+  const candidateLines = [
+    'a=candidate:3398650760 1 udp 2113937151 192.168.0.201 61043 typ host generation 0 network-cost 999',
+    'a=candidate:842163049 1 udp 1677729535 203.0.113.7 41234 typ srflx raddr 192.168.0.201 rport 61043 generation 0 network-cost 999',
+    'a=candidate:1510613869 1 udp 41885439 198.51.100.9 60000 typ relay raddr 0.0.0.0 rport 0 generation 0 network-cost 999',
+    'a=candidate:1 1 udp 2130706431 fe80::1c2d:3e4f:5a6b:7c8d 9999 typ host generation 0',
+    'a=candidate:2 1 udp 2130706431 stun.example.net 3478 typ host generation 0',
+    'a=candidate:3 1 tcp 2105458943 192.168.0.201 9 typ host tcptype active generation 0',
+    'not a candidate at all',
+  ];
+
+  const fields = {
+    sessionId: '1234567890123456789',
+    ufrag: 'kOtLiN01',
+    pwd: 'kotlinpassword1234567890',
+    fingerprint: { algo: 'sha-256', value: 'AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89' },
+    setup: 'active',
+    candidates: [
+      { type: 'host', component: 1, address: '192.168.1.24', port: 54321, transport: 'udp' },
+      { type: 'srflx', component: 1, address: '203.0.113.7', port: 41234, transport: 'udp' },
+      { type: 'host', component: 1, address: 'fe80::1c2d:3e4f:5a6b:7c8d', port: 9999, transport: 'udp' },
+      { type: 'host', component: 1, address: 'stun.example.net', port: 3478, transport: 'udp' },
+    ],
+  };
+
+  return {
+    note: 'Generated from src/sdp.js. The skeleton is a real Chrome offer.',
+    skeleton,
+    extracted: extractSdpFields(skeleton),
+    build: { fields, expected: buildSdpFromSkeleton(skeleton, fields) },
+    candidateLines,
+    parsed: candidateLines.map((line) => ({ line, parsed: parseCandidateLine(line) })),
+    formatted: fields.candidates.map((candidate) => ({
+      candidate,
+      priority: computePriority(candidate.type, candidate.component),
+      line: formatCandidateLine(candidate),
+    })),
+    priorities: ['host', 'prflx', 'srflx', 'relay'].map((type) => ({ type, value: computePriority(type, 1) })),
+    dedupe: dedupeCandidates([
+      { type: 'host', component: 1, address: '10.0.0.1', port: 1 },
+      { type: 'host', component: 1, address: '10.0.0.1', port: 1 },
+      { type: 'host', component: 1, address: '10.0.0.1', port: 2 },
+      { type: 'srflx', component: 1, address: '10.0.0.1', port: 1 },
+    ]),
+    privateAddresses: [
+      '10.0.0.1', '127.0.0.1', '192.168.1.5', '172.16.0.1', '172.31.255.255',
+      '172.32.0.1', '169.254.1.1', '8.8.8.8', '203.0.113.7',
+      'fe80::1', '::1', 'fc00::1', 'fd12::1', '2001:db8::1', 'stun.example.net',
+    ].map((address) => ({ address, isPrivate: isPrivateAddress(address) })),
+  };
+}
+
 async function main() {
   const existing = (() => {
     try {
@@ -166,6 +236,21 @@ async function main() {
         candidates: invite.candidates,
       },
     });
+  }
+
+  const sdp = sdpVectors();
+  const sdpTarget = new URL('../native/protocol/src/test/resources/sdp-vectors.json', import.meta.url);
+  if (process.argv.includes('--check')) {
+    const committedSdp = JSON.parse(readFileSync(sdpTarget, 'utf8'));
+    if (JSON.stringify(committedSdp) !== JSON.stringify(sdp)) {
+      console.error('the committed SDP vectors no longer match what the web client produces.');
+      console.error('Run: node tools/make-vectors.mjs');
+      process.exit(1);
+    }
+    console.log('sdp vectors are up to date');
+  } else {
+    writeFileSync(sdpTarget, `${JSON.stringify(sdp, null, 2)}\n`);
+    console.log(`wrote sdp vectors: ${sdp.parsed.length} candidate lines, ${sdp.priorities.length} priorities`);
   }
 
   const out = {
