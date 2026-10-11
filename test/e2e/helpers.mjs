@@ -54,6 +54,30 @@ export const launchBrowser = (options = {}) =>
   });
 
 /**
+ * Read a QR code the app drew, in Node rather than in the browser.
+ *
+ * The obvious decoder is the browser's own BarcodeDetector, but Chrome only
+ * implements it on macOS, Android and ChromeOS — a Linux runner reports it as
+ * missing, which would make these tests pass or fail depending on the machine.
+ * jsQR is pure JavaScript, so the answer is the same everywhere, and it is the
+ * same decoder the unit tests hold the encoder to.
+ */
+export async function decodeQrCanvas(page, selector) {
+  const shot = await page.evaluate((sel) => {
+    const canvas = document.querySelector(sel);
+    if (!canvas || !canvas.width || !canvas.height) return null;
+    const context = canvas.getContext('2d');
+    const { data, width, height } = context.getImageData(0, 0, canvas.width, canvas.height);
+    return { data: Array.from(data), width, height };
+  }, selector);
+
+  if (!shot) return null;
+  const { default: jsQR } = await import('jsqr');
+  const result = jsQR(new Uint8ClampedArray(shot.data), shot.width, shot.height);
+  return result?.data ?? null;
+}
+
+/**
  * Flags that give Chrome a synthetic camera and microphone, so a call can be
  * tested without hardware and without a permission prompt.
  */

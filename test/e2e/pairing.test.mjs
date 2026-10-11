@@ -11,19 +11,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { createStaticServer } from '../../serve.mjs';
-import { PROJECT_ROOT, launchBrowser, openPeer, state, waitForOpen, createInvite } from './helpers.mjs';
+import { PROJECT_ROOT, launchBrowser, openPeer, state, waitForOpen, createInvite, decodeQrCanvas } from './helpers.mjs';
 
-/** Read whatever the app drew on a canvas using the browser's barcode detector. */
-async function decodeCanvas(page, selector) {
-  return page.evaluate(async (sel) => {
-    const canvas = document.querySelector(sel);
-    if (!canvas || !canvas.width) return null;
-    if (typeof BarcodeDetector !== 'function') return 'NO_DETECTOR';
-    const detector = new BarcodeDetector({ formats: ['qr_code'] });
-    const results = await detector.detect(canvas);
-    return results[0]?.rawValue ?? null;
-  }, selector);
-}
+/** Read whatever the app drew on a canvas. Decoded in Node, so it works anywhere. */
+const decodeCanvas = (page, selector) => decodeQrCanvas(page, selector);
 
 test('two people pair by scanning each other’s QR code', { timeout: 240000 }, async (t) => {
   const server = await createStaticServer({ root: PROJECT_ROOT });
@@ -42,13 +33,11 @@ test('two people pair by scanning each other’s QR code', { timeout: 240000 }, 
 
     const code = await alice.page.inputValue('#invite-code');
     const scanned = await decodeCanvas(alice.page, '#qr-canvas');
-    assert.notEqual(scanned, 'NO_DETECTOR', 'this browser needs BarcodeDetector for this test');
     assert.ok(scanned, 'the rendered QR must decode');
     assert.equal(scanned, code, 'the QR must carry exactly the invite code');
 
     const snapshot = await state(alice);
     assert.equal(snapshot.qr.invite, true, 'the app reports a rendered invite QR');
-    assert.equal(snapshot.capabilities.scanner.hasDetector, true);
   });
 
   await t.test('bob scans it and replies with a QR of his own', async () => {
