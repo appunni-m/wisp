@@ -43,10 +43,10 @@ avoids certificates entirely: the origin becomes `localhost` on the phone, which
 is a genuine secure context.
 
 ```bash
-npm test              # 137 unit tests
-npm run test:e2e      #  70 in real Chrome: pairing, groups, chat list, transfer, swarm
+npm test              # 157 unit tests
+npm run test:e2e      #  82 in real Chrome: pairing, groups, chat list, transfer, swarm
 npm run test:android  #  7 against the real APK on a real Android runtime
-npm run test:all      # all 214
+npm run test:all      # all 246
 ```
 
 ---
@@ -391,7 +391,8 @@ a bottom tab bar, a chat list, and a conversation you tap into.
 |---|---|
 | **Chats tab** | the list, with a badge for unread, a search box, and a floating compose button |
 | **Settings tab** | your nickname, how much you share, and your key fingerprint |
-| **Conversation** | compact header, bubbles with tails, ticks, day separators |
+| **Conversation** | compact header, bubbles with tails, ticks, day separators, call buttons |
+| **Call** | full-screen video, self view, mute, camera, speaker, end |
 | **Contact info** | tap the name in the header: identity, security code, disappearing messages, clear and delete |
 
 **Long press** is the main gesture, as it is everywhere else. On a chat row it
@@ -408,9 +409,66 @@ back to **last seen today at 14:32** rather than a bare "offline".
 composer is empty. Recording shows a timer, caps at a minute, and goes out down
 the same resumable path as any other file.
 
-Deliberately absent: Calls, Status and Communities tabs. They would be decoration
-— there is no server to route a call, no audience to broadcast to, and no
-directory to build a community from. Two tabs that work beat five that do not.
+Deliberately absent: Status and Communities tabs. They would be decoration
+— there is no audience to broadcast to and no directory to build a community
+from. Two tabs that work beat five that do not.
+
+---
+
+## Calls
+
+A call renegotiates the connection the chat is already using, and the SDP for
+that travels over the data channel. There is no signalling server to add and none
+is needed — the link that carries the messages carries the call setup too. Only
+the caller ever offers, so there is no glare to resolve.
+
+Tap the phone or camera in a conversation. The other side gets a full-screen
+invitation to accept or decline; accepting connects in well under a second on a
+local link.
+
+### Compression, and deciding what the network can take
+
+| Where | What is done, and why |
+|---|---|
+| **Opus** | In-band FEC so a lost packet is reconstructed rather than heard as a click, and DTX so nothing is sent while nobody is speaking — on a phone that is most of the time. |
+| **Video codec** | VP9 first, then AV1, VP8 and H.264. Better compression at the same bitrate is free quality. |
+| **Capture** | 640×480 at 24 fps. Asking a phone for more is what makes it hot and saturates an uplink that was never going to carry 1080p. |
+| **Every two seconds** | The call reads its own stats and picks a profile. |
+
+Four profiles, and the call moves between them on its own:
+
+| Tier | Video | Bitrate | Scale | Frames |
+|---|---|---|---|---|
+| Good | on | 1.5 Mbps | full | 30 |
+| Fair | on | 700 kbps | ½ | 24 |
+| Poor | on | 220 kbps | ¼ | 15 |
+| Audio only | **off** | — | ¼ | 10 |
+
+Three decisions worth stating:
+
+- **Symptoms decide the tier, not predictions.** Loss, round-trip time and jitter
+  move it. An earlier version also trusted the browser's estimate of available
+  bandwidth and duly pronounced a flawless loopback call "audio only", because
+  that estimate starts near zero and climbs. The estimate is still used, but only
+  to cap the bitrate *within* the current tier, halved — aiming at it exactly is
+  how a call ends up oscillating.
+- **Dropping is immediate; recovering takes three calm samples.** A stuttering
+  call is worse than a soft one, and flapping between tiers is worse than waiting.
+- **The last resort is a real switch.** Dropping to audio-only stops the camera
+  track rather than setting a bitrate of zero.
+
+### Testing a call without a microphone
+
+A headless browser has no camera and no microphone, and asks the operating system
+for one in vain — on this machine `getUserMedia` never resolves at all. Rather
+than skip the test, the suite installs a canvas and an oscillator: real tracks
+that really encode and really travel, so the whole path is exercised without
+depending on hardware.
+
+Twelve end-to-end tests cover a call being offered, accepted, declined and ended;
+audio and video bytes actually arriving rather than merely being negotiated; mute
+reaching the other side; the self view; and the chat link still working
+afterwards.
 
 ---
 
@@ -487,10 +545,11 @@ src/
   media.js      chunking, back-pressure, bitmaps, transfer protocol
   transfers.js  durable chunks and transfer records, so a drop is survivable
   swarm.js      who fetches which chunk from which peer, and what to do when one leaves
+  call.js       calls: media, renegotiation, and the policy for a changing network
   store.js      IndexedDB
   app.js        UI state machine
 test/
-  unit/        137 tests: codec, SDP templating, signatures, SAS, QR, chat rules,
+  unit/        157 tests: codec, SDP templating, signatures, SAS, QR, chat rules,
                SHA-256 (against NIST vectors), chunking, resume, swarm scheduling
   e2e/          real Chrome: handshake, forged codes, QR/NFC pairing, groups, phones
                 plus android.test.mjs, which drives the installed APK over CDP

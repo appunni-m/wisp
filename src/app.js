@@ -2558,12 +2558,6 @@ function wireUi() {
   el('app-name').textContent = APP_NAME;
   document.title = APP_NAME;
 
-  el('btn-settings').addEventListener('click', () => {
-    const panel = el('identity-panel');
-    panel.hidden = !panel.hidden;
-    el('btn-settings').setAttribute('aria-expanded', String(!panel.hidden));
-  });
-
   const openNewChat = () => {
     el('invite-result').hidden = true;
     el('connect-heading').textContent = 'Start a private chat';
@@ -2682,6 +2676,9 @@ function wireUi() {
   const openSettings = () => {
     renderSettings();
     showView('settings');
+    el('btn-settings').setAttribute('aria-expanded', 'true');
+    el('tab-settings').setAttribute('aria-selected', 'true');
+    el('tab-chats').setAttribute('aria-selected', 'false');
   };
   el('tab-chats').addEventListener('click', () => goHome());
   el('tab-settings').addEventListener('click', openSettings);
