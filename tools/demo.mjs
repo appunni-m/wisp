@@ -37,6 +37,49 @@ async function closeDrawer(peer) {
 
 const wait = (ms) => new Promise((done) => setTimeout(done, ms));
 
+/** A camera and microphone that need no hardware, for the screenshots. */
+async function installSyntheticMedia(page) {
+  await page.addInitScript(() => {
+    const synthetic = (constraints = {}) => {
+      const tracks = [];
+      if (constraints.video) {
+        const canvas = document.createElement('canvas');
+        canvas.width = 480;
+        canvas.height = 360;
+        const context = canvas.getContext('2d');
+        let hue = 0;
+        setInterval(() => {
+          hue = (hue + 2) % 360;
+          const sky = context.createLinearGradient(0, 0, 0, 360);
+          sky.addColorStop(0, `hsl(${hue} 70% 58%)`);
+          sky.addColorStop(1, `hsl(${(hue + 45) % 360} 55% 28%)`);
+          context.fillStyle = sky;
+          context.fillRect(0, 0, 480, 360);
+          context.fillStyle = 'rgba(255,255,255,0.92)';
+          context.beginPath();
+          context.arc(240 + Math.sin(Date.now() / 800) * 110, 180, 52, 0, Math.PI * 2);
+          context.fill();
+        }, 80);
+        tracks.push(...canvas.captureStream(15).getVideoTracks());
+      }
+      if (constraints.audio) {
+        const context = new AudioContext();
+        const oscillator = context.createOscillator();
+        const destination = context.createMediaStreamDestination();
+        oscillator.connect(destination);
+        oscillator.start();
+        tracks.push(...destination.stream.getAudioTracks());
+      }
+      return new MediaStream(tracks);
+    };
+    Object.defineProperty(navigator.mediaDevices, 'getUserMedia', {
+      configurable: true,
+      writable: true,
+      value: async (constraints) => synthetic(constraints ?? {}),
+    });
+  });
+}
+
 async function say(peer, text) {
   await peer.page.fill('#message-input', text);
   await peer.page.click('#btn-send');
@@ -53,6 +96,17 @@ async function main() {
     /* ---------------------------------------------------- one-to-one --- */
     const alice = await phone(await openPeer(browser, server.url, 'alice'));
     const bob = await phone(await openPeer(browser, server.url, 'bob'));
+
+    // A camera and microphone that need no hardware. This has to happen before
+    // the two peers pair: reloading a page throws away its peer connection, and
+    // the screenshots need a call at the end of the same session.
+    for (const peer of [alice, bob]) {
+      await installSyntheticMedia(peer.page);
+      await peer.page.reload();
+      await peer.page.evaluate(() => window.__p2p.ready);
+      await peer.page.click('#btn-settings');
+      await peer.page.waitForSelector('#identity-panel:not([hidden])', { timeout: 10000 });
+    }
 
     await alice.page.fill('#nick-input', 'alice-quiet');
     await alice.page.click('#btn-new-chat');
@@ -177,7 +231,33 @@ async function main() {
     await wait(400);
     await alice.page.screenshot({ path: `${OUT}chat-list.png` });
 
-    // The settings page, where your own identity lives.
+    // A video call. Both peers already carry synthetic media, installed before
+    // they paired — reloading now would drop the connection they are using.
+    // Back to the Chats tab, then into the conversation.
+    await alice.page.click('#tab-chats');
+    await alice.page.waitForSelector('#chat-list li', { timeout: 10000 });
+    await alice.page.click('#chat-list li');
+    await alice.page.waitForSelector('#view-chat:not([hidden])', { timeout: 10000 });
+    await wait(300);
+
+    // Alice calls bob, and he picks up.
+    await alice.page.click('#btn-call-video');
+    await bob.page.waitForSelector('#call-incoming:not([hidden])', { timeout: 20000 });
+    await wait(400);
+    await bob.page.screenshot({ path: `${OUT}call-incoming.png` });
+    await bob.page.click('#btn-call-accept');
+    await alice.page.waitForFunction(() => window.__p2p.callState()?.state === 'connected', null, { timeout: 30000 });
+    await wait(2500);
+    await alice.page.click('#btn-call-speaker');
+    await wait(400);
+    await alice.page.screenshot({ path: `${OUT}call-video.png` });
+    await alice.page.click('#btn-call-end');
+    await wait(600);
+
+    // The settings page, where your own identity lives. Leave the conversation
+    // first: the tab bar belongs to the list, not to an open chat.
+    await alice.page.click('#btn-back');
+    await alice.page.waitForSelector('#view-home:not([hidden])', { timeout: 10000 });
     await alice.page.click('#tab-settings');
     await alice.page.waitForSelector('#view-settings:not([hidden])', { timeout: 10000 });
     await wait(300);

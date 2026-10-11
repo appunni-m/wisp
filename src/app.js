@@ -72,6 +72,7 @@ import {
 } from './media.js';
 import { b64urlEncode, b64urlDecode } from './codec.js';
 import { planSources, toBatches } from './swarm.js';
+import { CALL, CallSession, QUALITY_PROFILES } from './call.js';
 
 const el = (id) => document.getElementById(id);
 const INVITE_STALE_SECONDS = 15 * 60;
@@ -99,6 +100,10 @@ const state = {
   typing: new Map(),
   /** Who has announced they hold a finished file: fileId -> Set of peer keys. */
   holders: new Map(),
+  /** The call in progress or being offered, if any. */
+  call: null,
+  /** An invitation that has arrived but not been answered. */
+  incomingCall: null,
   /** Chunk reads we are currently serving to somebody else. */
   serving: new Map(),
   searching: false,
@@ -594,6 +599,7 @@ function routeMessage(session, detail) {
   else if (detail?.t === 'typing') receiveTyping(session, detail);
   else if (detail?.t === TRANSFER.AVAILABLE) receiveAvailable(session, detail);
   else if (detail?.t === TRANSFER.SERVE) receiveServeRequest(session, detail);
+  else if (detail?.t?.startsWith('call-')) receiveCallMessage(session, detail);
 }
 
 /** Work out which conversation this link belongs to, and open it. */
@@ -1899,6 +1905,290 @@ function receiveTyping(session, detail) {
 }
 
 
+
+/* ------------------------------------------------------------------- calls */
+
+/**
+ * A call renegotiates the peer connection the chat is already using, and the
+ * SDP for that travels over the data channel. There is no server to route a
+ * call, and none is needed: the link that carries the messages carries the
+ * signalling too.
+ */
+let callTimer = null;
+
+function callPartner() {
+  const chat = activeChat();
+  return { chat, name: chat?.nick || 'Unknown' };
+}
+
+function renderCallAvatar() {
+  const { chat } = callPartner();
+  const seed = chat?.publicKey ?? chat?.id ?? 'call';
+  for (const id of ['call-avatar', 'incoming-avatar']) {
+    const node = el(id);
+    node.textContent = initialsFor(chat?.nick || 'Call');
+    node.style.background = avatarColour(seed);
+  }
+  el('call-name').textContent = chat?.nick || 'Unknown';
+  el('incoming-name').textContent = chat?.nick || 'Unknown';
+}
+
+function setCallStatus(text) {
+  el('call-status').textContent = text;
+}
+
+function showCallScreen() {
+  renderCallAvatar();
+  el('call-incoming').hidden = true;
+  el('call-screen').hidden = false;
+  el('call-quality').hidden = true;
+  el('call-quality').removeAttribute('data-tier');
+  el('btn-call-mute').setAttribute('aria-pressed', 'false');
+  el('btn-call-speaker').setAttribute('aria-pressed', 'false');
+  delete el('call-remote').dataset.live;
+  el('call-self').hidden = true;
+  setCallStatus('Ringing…');
+  clearInterval(callTimer);
+}
+
+function hideCallScreens() {
+  clearInterval(callTimer);
+  el('call-screen').hidden = true;
+  el('call-incoming').hidden = true;
+  el('call-remote').srcObject = null;
+  delete el('call-remote').dataset.live;
+  el('call-self').srcObject = null;
+  el('call-self').hidden = true;
+}
+
+function describeCallEnd(reason, duration) {
+  if (reason === 'declined') return 'Call declined';
+  if (reason === 'busy') return 'They are on another call';
+  if (reason === 'failed') return 'Call could not connect';
+  if (!duration) return 'Call ended';
+  return `Call ended · ${formatDuration(duration)}`;
+}
+
+function formatDuration(seconds) {
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  if (mins >= 60) return `${Math.floor(mins / 60)}:${String(mins % 60).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  return `${mins}:${String(secs).padStart(2, '0')}`;
+}
+
+/** Everything the call tells us, turned into what is on screen. */
+function onCallEvent(event) {
+  const call = state.call;
+  switch (event.type) {
+    case 'connected': {
+      if (state.call) state.call.state = 'connected';
+      setCallStatus(formatDuration(0));
+      clearInterval(callTimer);
+      callTimer = setInterval(() => {
+        if (state.call?.session) setCallStatus(formatDuration(state.call.session.duration));
+      }, 1000);
+      break;
+    }
+    case 'remote': {
+      const stream = event.stream;
+      el('call-remote').srcObject = stream;
+      el('call-self').srcObject = state.call?.session?.localStream ?? null;
+      const hasVideo = stream.getVideoTracks().length > 0;
+      // `toggleAttribute` sets an empty value, which no [data-live="1"] rule
+      // matches — so the backdrop stayed over the picture.
+      const remote = el('call-remote');
+      if (hasVideo) remote.dataset.live = '1';
+      else delete remote.dataset.live;
+      el('call-self').hidden = !state.call?.video;
+      break;
+    }
+    case 'quality': {
+      const badge = el('call-quality');
+      badge.hidden = false;
+      badge.textContent = event.profile.label;
+      badge.dataset.tier = event.tier;
+      break;
+    }
+    case 'state': {
+      el('btn-call-mute').setAttribute('aria-pressed', String(event.muted));
+      el('btn-call-video-toggle').setAttribute('aria-pressed', String(!event.cameraOn));
+      break;
+    }
+    case 'ended': {
+      if (state.call) state.call.state = 'ended';
+      hideCallScreens();
+      const chatId = call?.chatId;
+      if (chatId) noteCallInChat(chatId, call.video ? 'video' : 'voice', event.duration, event.reason);
+      state.call = null;
+      if (state.view === 'chat') renderConversation();
+      break;
+    }
+    default:
+      break;
+  }
+}
+
+function noteCallInChat(chatId, kind, seconds, reason) {
+  if (!chatId || reason === 'started') return;
+  const label = kind === 'video' ? 'Video call' : 'Voice call';
+  const text = reason === 'ended' || !reason
+    ? `${label} · ${formatDuration(seconds)}`
+    : `${label} · ${describeCallEnd(reason, seconds)}`;
+  const message = makeMessage({ who: 'system', text });
+  state.chats.append(chatId, message, { unread: false }).then(() => {
+    if (state.activeChatId === chatId) renderConversation();
+    renderChatList();
+  }).catch(() => {});
+}
+
+/** Start a call from the conversation we are looking at. */
+async function placeCall({ video }) {
+  const chat = activeChat();
+  if (!chat || chat.kind === 'room') {
+    toast('Calls are one to one for now.', true);
+    return;
+  }
+  if (!state.session?.isOpen) {
+    toast('This chat is not connected right now.', true);
+    return;
+  }
+  if (state.call || state.incomingCall) {
+    toast('There is already a call.', true);
+    return;
+  }
+
+  const callId = makeTransferId();
+  const session = new CallSession({
+    pc: state.session.peerConnection,
+    send: (message) => sendControl(state.session, message),
+    role: 'caller',
+    video,
+    callId,
+    onEvent: onCallEvent,
+  });
+  state.call = { session, chatId: chat.id, callId, video, state: 'ringing' };
+  showCallScreen();
+
+  try {
+    await session.openMedia({ video });
+  } catch (error) {
+    state.call = null;
+    hideCallScreens();
+    toast(error.message, true);
+    return;
+  }
+
+  sendControl(state.session, { t: CALL.INVITE, callId, video });
+}
+
+async function acceptCall() {
+  const incoming = state.incomingCall;
+  if (!incoming) return;
+  state.incomingCall = null;
+
+  const session = new CallSession({
+    pc: state.session.peerConnection,
+    send: (message) => sendControl(state.session, message),
+    role: 'callee',
+    video: incoming.video,
+    callId: incoming.callId,
+    onEvent: onCallEvent,
+  });
+  state.call = { session, chatId: incoming.chatId, callId: incoming.callId, video: incoming.video, state: 'connecting' };
+  showCallScreen();
+  setCallStatus('Connecting…');
+
+  try {
+    await session.openMedia({ video: incoming.video });
+  } catch (error) {
+    state.call = null;
+    hideCallScreens();
+    sendControl(state.session, { t: CALL.END, callId: incoming.callId, reason: 'failed' });
+    toast(error.message, true);
+  }
+  // The caller sends the offer once it knows we picked up.
+  sendControl(state.session, { t: CALL.ACCEPT, callId: incoming.callId });
+}
+
+function declineCall(reason = 'declined') {
+  const incoming = state.incomingCall;
+  state.incomingCall = null;
+  el('call-incoming').hidden = true;
+  if (incoming) {
+    noteCallInChat(incoming.chatId, incoming.video ? 'video' : 'voice', 0, reason);
+    sendControl(state.session, { t: CALL.DECLINE, callId: incoming.callId, reason });
+  }
+}
+
+function endCall(reason = 'ended') {
+  const call = state.call;
+  if (call) {
+    sendControl(state.session, { t: CALL.END, callId: call.callId, reason });
+    call.session.close(reason);
+    state.call = null;
+  } else {
+    hideCallScreens();
+  }
+}
+
+/** All the call control messages, from either role. */
+async function receiveCallMessage(session, message) {
+  const chatId = chatIdForSession(session);
+  const call = state.call;
+
+  if (message.t === CALL.INVITE) {
+    if (call) {
+      sendControl(session, { t: CALL.DECLINE, callId: message.callId, reason: 'busy' });
+      return;
+    }
+    state.incomingCall = { callId: message.callId, chatId, video: Boolean(message.video) };
+    if (chatId) state.activeChatId = chatId;
+    renderCallAvatar();
+    el('incoming-kind').textContent = message.video ? 'Incoming video call' : 'Incoming voice call';
+    el('call-incoming').hidden = false;
+    return;
+  }
+
+  // Mute and camera state only mean anything while a call is up, and older
+  // peers may not tag it, so it is accepted without a matching id.
+  if (!call) return;
+  if (message.t === CALL.STATE) {
+    call.session.muted = Boolean(message.muted);
+    call.session.cameraOn = Boolean(message.cameraOn);
+    onCallEvent({ type: 'state', muted: call.session.muted, cameraOn: call.session.cameraOn });
+    return;
+  }
+  if (message.callId !== call.callId) return;
+
+  switch (message.t) {
+    case CALL.ACCEPT:
+      call.state = 'connecting';
+      setCallStatus('Connecting…');
+      // Only the caller offers, so there is never a glare to resolve.
+      call.session.onEvent = onCallEvent;
+      await call.session.createOffer();
+      break;
+    case CALL.OFFER:
+      await call.session.acceptOffer(message.sdp);
+      call.session.markConnected();
+      break;
+    case CALL.ANSWER:
+      await call.session.acceptAnswer(message.sdp);
+      call.session.markConnected();
+      break;
+    case CALL.ICE:
+      await call.session.addIce(message.candidate);
+      break;
+    case CALL.DECLINE:
+    case CALL.END:
+      call.session.close(message.reason ?? 'ended');
+      state.call = null;
+      break;
+    default:
+      break;
+  }
+}
+
 /* ------------------------------------------------------------------- swarm */
 
 /**
@@ -2551,6 +2841,41 @@ function wireUi() {
   });
   el('btn-record-cancel').addEventListener('click', () => stopRecording({ send: false }));
 
+
+  /* ------------------------------------------------------------- calls */
+
+  el('btn-call-audio').addEventListener('click', () => placeCall({ video: false }));
+  el('btn-call-video').addEventListener('click', () => placeCall({ video: true }));
+  el('btn-call-accept').addEventListener('click', () => acceptCall().catch((error) => toast(error.message, true)));
+  el('btn-call-decline').addEventListener('click', () => declineCall('declined'));
+  el('btn-call-end').addEventListener('click', () => endCall('ended'));
+
+  el('btn-call-mute').addEventListener('click', () => {
+    const call = state.call;
+    if (!call) return;
+    call.session.setMuted(!call.session.muted);
+  });
+  el('btn-call-video-toggle').addEventListener('click', () => {
+    const call = state.call;
+    if (!call) return;
+    call.session.setCameraEnabled(!call.session.cameraOn);
+    el('call-self').hidden = !call.session.cameraOn;
+  });
+  // Only meaningful on a phone, but harmless elsewhere: the label is the hint.
+  el('btn-call-speaker').addEventListener('click', () => {
+    const button = el('btn-call-speaker');
+    const on = button.getAttribute('aria-pressed') !== 'true';
+    button.setAttribute('aria-pressed', String(on));
+    // Routing audio to the loudspeaker is a platform decision, so ask the
+    // element to do it and leave the UI honest either way.
+    const remote = el('call-remote');
+    remote.volume = 1;
+    if (remote.setSinkId && state.audioOutputs?.length) {
+      const target = state.audioOutputs.find((device) => (on ? /speaker/i.test(device.label) : /earpiece|receiver/i.test(device.label)));
+      if (target) remote.setSinkId(target.deviceId).catch(() => {});
+    }
+  });
+
   // Attachments: two pickers, because a phone distinguishes the camera roll
   // from documents and the capture attribute only makes sense for the first.
   el('btn-attach').addEventListener('click', () => {
@@ -2775,6 +3100,29 @@ window.__p2p = {
   setIceServers: (servers) => configureIceServers(servers),
   getIceServers: () => currentIceServers(),
   transferStats: () => ({ ...state.stats }),
+  callStats: () => (state.call ? state.call.session.stats() : null),
+  refreshCallStats: () => (state.call ? state.call.session.refreshStats() : null),
+  callPc: () => state.call?.session?.pc ?? null,
+  callPc: () => state.call?.session?.pc ?? null,
+  callState: () => (state.call
+    ? {
+        state: state.call.state,
+        role: state.call.session.role,
+        video: state.call.video,
+        tier: state.call.session.tier,
+        muted: state.call.session.muted,
+        cameraOn: state.call.session.cameraOn,
+        duration: state.call.session.duration,
+        hasLocalStream: Boolean(state.call.session.localStream),
+        hasRemoteStream: Boolean(state.call.session.remoteStream),
+        remoteVideoTracks: state.call.session.remoteStream?.getVideoTracks().length ?? 0,
+        remoteAudioTracks: state.call.session.remoteStream?.getAudioTracks().length ?? 0,
+      }
+    : null),
+  incomingCall: () => (state.incomingCall ? { ...state.incomingCall } : null),
+  startCall: (options = {}) => placeCall({ video: Boolean(options.video) }),
+  answerCall: () => acceptCall(),
+  hangUp: (reason = 'ended') => endCall(reason),
   holders: () => Object.fromEntries([...state.holders].map(([file, keys]) => [file.slice(0, 8), [...keys].map((k) => k.slice(0, 8))])),
   /** How many files are prepared and waiting in the preview sheet. */
   pendingAttachments: () => state.pendingAttachments.length,

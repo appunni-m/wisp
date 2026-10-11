@@ -241,6 +241,12 @@
           <small id="chat-header-status"></small>
         </span>
       </button>
+      <button type="button" class="icon-btn" id="btn-call-audio" aria-label="Voice call" title="Voice call">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.6 3.5 9 3.9l1.2 3.4-2 1.5a12 12 0 0 0 5.5 5.5l1.5-2 3.4 1.2.4 2.4c0 1.2-1 2.1-2.2 2.1A15.5 15.5 0 0 1 4.5 5.7c0-1.2.9-2.2 2.1-2.2Z"/></svg>
+      </button>
+      <button type="button" class="icon-btn" id="btn-call-video" aria-label="Video call" title="Video call">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="12" height="12" rx="2.5"/><path d="m15 11 5-3v8l-5-3z"/></svg>
+      </button>
       <button type="button" class="icon-btn" id="btn-chat-menu" aria-label="Menu">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8a1.6 1.6 0 1 0 0-3.2A1.6 1.6 0 0 0 12 8Zm0 5.6a1.6 1.6 0 1 0 0-3.2 1.6 1.6 0 0 0 0 3.2Zm0 5.6a1.6 1.6 0 1 0 0-3.2 1.6 1.6 0 0 0 0 3.2Z"/></svg>
       </button>
@@ -317,6 +323,72 @@
     <span>Settings</span>
   </button>
 </nav>
+
+<!-- Call -->
+<div class="call-screen" id="call-screen" hidden>
+  <video class="call-remote" id="call-remote" autoplay playsinline></video>
+
+  <div class="call-backdrop" id="call-backdrop">
+    <span class="avatar huge" id="call-avatar">?</span>
+  </div>
+
+  <div class="call-top">
+    <div class="call-who">
+      <strong id="call-name">…</strong>
+      <span id="call-status">Ringing…</span>
+    </div>
+    <span class="call-quality" id="call-quality" hidden></span>
+  </div>
+
+  <div class="call-encryption">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+    <span>End-to-end encrypted</span>
+  </div>
+
+  <video class="call-self" id="call-self" autoplay playsinline muted hidden></video>
+
+  <div class="call-controls">
+    <button type="button" class="call-btn" id="btn-call-speaker" aria-label="Speaker">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4Z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/></svg>
+      <span>Speaker</span>
+    </button>
+    <button type="button" class="call-btn" id="btn-call-video-toggle" aria-label="Camera">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="12" height="12" rx="2.5"/><path d="m15 11 5-3v8l-5-3z"/></svg>
+      <span>Video</span>
+    </button>
+    <button type="button" class="call-btn" id="btn-call-mute" aria-label="Mute">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Z"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+      <span>Mute</span>
+    </button>
+    <button type="button" class="call-btn end" id="btn-call-end" aria-label="End call">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.6 3.5 9 3.9l1.2 3.4-2 1.5a12 12 0 0 0 5.5 5.5l1.5-2 3.4 1.2.4 2.4c0 1.2-1 2.1-2.2 2.1A15.5 15.5 0 0 1 4.5 5.7c0-1.2.9-2.2 2.1-2.2Z"/></svg>
+      <span>End</span>
+    </button>
+  </div>
+</div>
+
+<!-- Incoming call -->
+<div class="call-screen incoming" id="call-incoming" hidden>
+  <div class="call-backdrop">
+    <span class="avatar huge pulse" id="incoming-avatar">?</span>
+  </div>
+  <div class="call-top centred">
+    <div class="call-who">
+      <strong id="incoming-name">…</strong>
+      <span id="incoming-kind">Incoming call</span>
+    </div>
+  </div>
+  <div class="incoming-controls">
+    <button type="button" class="call-btn end big" id="btn-call-decline" aria-label="Decline">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.6 3.5 9 3.9l1.2 3.4-2 1.5a12 12 0 0 0 5.5 5.5l1.5-2 3.4 1.2.4 2.4c0 1.2-1 2.1-2.2 2.1A15.5 15.5 0 0 1 4.5 5.7c0-1.2.9-2.2 2.1-2.2Z"/></svg>
+      <span>Decline</span>
+    </button>
+    <button type="button" class="call-btn accept big" id="btn-call-accept" aria-label="Accept">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.6 3.5 9 3.9l1.2 3.4-2 1.5a12 12 0 0 0 5.5 5.5l1.5-2 3.4 1.2.4 2.4c0 1.2-1 2.1-2.2 2.1A15.5 15.5 0 0 1 4.5 5.7c0-1.2.9-2.2 2.1-2.2Z"/></svg>
+      <span>Accept</span>
+    </button>
+  </div>
+</div>
 
 <!-- Message actions -->
 <div class="sheet-backdrop" id="message-menu" hidden>

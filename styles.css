@@ -708,3 +708,105 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   min-width: 190px; padding: 3px 0;
 }
 .msg .media.audio .voice audio { width: 200px; }
+
+/* ------------------------------------------------------------------- calls */
+
+.call-screen {
+  position: fixed; inset: 0; z-index: 60;
+  background: #0b141a;
+  display: flex; flex-direction: column;
+  color: #e9edef;
+  overflow: hidden;
+}
+
+/* The remote picture fills the screen; everything else floats above it. */
+.call-remote {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+  background: #0b141a;
+}
+.call-remote:not([data-live="1"]) { opacity: 0; }
+
+.call-backdrop {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(circle at 50% 35%, #1f2c33 0%, #0b141a 70%);
+}
+.call-remote[data-live="1"] ~ .call-backdrop { opacity: 0; pointer-events: none; }
+
+.avatar.huge { width: 132px; height: 132px; font-size: 2.6rem; }
+.avatar.pulse { animation: call-pulse 1.6s ease-in-out infinite; }
+@keyframes call-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(233, 237, 239, 0.25); }
+  50% { box-shadow: 0 0 0 18px rgba(233, 237, 239, 0); }
+}
+
+.call-top {
+  position: relative; z-index: 2;
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 10px; padding: 18px 18px 22px;
+  /* A dark enough scrim that a name stays readable over bright video. */
+  background: linear-gradient(to bottom, rgba(11, 20, 26, 0.78) 0%, rgba(11, 20, 26, 0.35) 55%, transparent 100%);
+}
+.call-top.centred { justify-content: center; text-align: center; margin-top: 4px; }
+.call-who strong { display: block; font-size: 1.35rem; font-weight: 500; text-shadow: 0 1px 6px rgba(0, 0, 0, 0.55); }
+.call-who span { display: block; color: #d1d7db; font-size: 0.9rem; margin-top: 2px; text-shadow: 0 1px 6px rgba(0, 0, 0, 0.55); }
+
+.call-quality {
+  flex: none; padding: 4px 10px; border-radius: 999px;
+  background: rgba(233, 237, 239, 0.14);
+  font-size: 0.72rem; color: #d1d7db;
+}
+.call-quality[data-tier="poor"], .call-quality[data-tier="bad"] { background: rgba(234, 179, 8, 0.22); color: #fde68a; }
+
+.call-encryption {
+  position: relative; z-index: 2;
+  margin: 0 auto; padding: 5px 12px;
+  display: flex; align-items: center; gap: 6px;
+  border-radius: 999px;
+  background: rgba(11, 20, 26, 0.6);
+  font-size: 0.72rem; color: #8696a0;
+}
+.call-encryption svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+
+/* Self view, the small picture in the corner. */
+.call-self {
+  position: absolute; z-index: 3;
+  right: 16px; top: 92px;
+  width: 104px; height: 148px;
+  object-fit: cover;
+  border-radius: 12px;
+  background: #1f2c33;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  transform: scaleX(-1);   /* a self view is a mirror, not a photograph */
+}
+
+.call-controls, .incoming-controls {
+  position: relative; z-index: 2;
+  margin-top: auto;
+  display: flex; align-items: center; justify-content: center; gap: 18px;
+  padding: 22px 16px calc(26px + env(safe-area-inset-bottom));
+  background: linear-gradient(to top, rgba(11, 20, 26, 0.9), transparent);
+}
+.incoming-controls { gap: 56px; padding-bottom: calc(60px + env(safe-area-inset-bottom)); }
+
+.call-btn {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  background: transparent; border: 0; cursor: pointer;
+  color: #e9edef; font-size: 0.72rem;
+}
+.call-btn svg {
+  width: 26px; height: 26px; padding: 13px;
+  box-sizing: content-box;
+  border-radius: 50%;
+  background: rgba(233, 237, 239, 0.16);
+  fill: none; stroke: currentColor; stroke-width: 1.8;
+  stroke-linecap: round; stroke-linejoin: round;
+  transition: background 0.15s ease;
+}
+.call-btn[aria-pressed="true"] svg { background: #e9edef; color: #0b141a; }
+.call-btn.end svg { background: #ea4335; color: #fff; }
+.call-btn.accept svg { background: #00a884; color: #fff; }
+.call-btn.big svg { width: 30px; height: 30px; padding: 17px; }
+.call-btn.end.big svg { transform: rotate(135deg); }

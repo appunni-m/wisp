@@ -64,6 +64,11 @@ export class PairingSession extends EventTarget {
     this.groupLabel = groupLabel ?? identity?.groupLabel ?? '';
   }
 
+  /** Exposed so a call can renegotiate the connection the chat already uses. */
+  get peerConnection() {
+    return this.#pc;
+  }
+
   get channel() {
     return this.#channel;
   }

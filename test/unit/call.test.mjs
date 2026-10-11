@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   QUALITY,
   QUALITY_PROFILES,
+  capForAvailableBitrate,
   QualityGovernor,
   decideQuality,
   summariseStats,
@@ -33,17 +34,33 @@ test('heavy loss gives up on video to save the voice', () => {
   assert.equal(QUALITY_PROFILES[tier].video, false, 'the profile must actually drop video');
 });
 
-test('what the link will take is used when the browser reports it', () => {
-  // No loss and no delay, but the link simply cannot carry video.
-  assert.equal(decideQuality({ availableOutgoingBitrate: 90_000 }), QUALITY.BAD);
-  assert.equal(decideQuality({ availableOutgoingBitrate: 300_000 }), QUALITY.POOR);
-  assert.equal(decideQuality({ availableOutgoingBitrate: 600_000 }), QUALITY.FAIR);
-  assert.equal(decideQuality({ availableOutgoingBitrate: 4_000_000 }), QUALITY.GOOD);
+test('the bandwidth estimate never decides the tier on its own', () => {
+  // It starts near zero and climbs, so a flawless call would be pronounced
+  // audio-only in its first seconds. Only symptoms move the tier.
+  assert.equal(decideQuality({ availableOutgoingBitrate: 20_000 }), QUALITY.GOOD);
+  assert.equal(decideQuality({}), QUALITY.GOOD);
 });
 
-test('an unreported bitrate is not mistaken for a bad one', () => {
-  assert.equal(decideQuality({ availableOutgoingBitrate: null }), QUALITY.GOOD);
-  assert.equal(decideQuality({}), QUALITY.GOOD);
+test('a tight estimate trims the bitrate to fit', () => {
+  const good = QUALITY_PROFILES[QUALITY.GOOD];
+  const trimmed = capForAvailableBitrate(good, 600_000);
+  assert.ok(trimmed.videoBitrate < good.videoBitrate, 'must send less than the estimate allows');
+  assert.ok(trimmed.videoBitrate >= 250_000, `trimmed to ${trimmed.videoBitrate}, which is too harsh`);
+  assert.equal(trimmed.audioBitrate, good.audioBitrate, 'audio is not what gets sacrificed');
+});
+
+test('an estimate too small for a picture drops the video but keeps the call', () => {
+  const capped = capForAvailableBitrate(QUALITY_PROFILES[QUALITY.GOOD], 80_000);
+  assert.equal(capped.video, false);
+  assert.equal(capped.videoBitrate, 0);
+  assert.ok(capped.audioBitrate > 0, 'the voice must survive');
+});
+
+test('a generous estimate changes nothing', () => {
+  const good = QUALITY_PROFILES[QUALITY.GOOD];
+  assert.equal(capForAvailableBitrate(good, 8_000_000), good);
+  assert.equal(capForAvailableBitrate(good, null), good, 'no estimate is not a bad estimate');
+  assert.equal(capForAvailableBitrate(QUALITY_PROFILES[QUALITY.BAD], 8_000_000).video, false);
 });
 
 test('every tier has a profile with sane numbers', () => {

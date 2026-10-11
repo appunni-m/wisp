@@ -79,35 +79,49 @@ export const QUALITY_PROFILES = {
   },
 };
 
-/** Thresholds, loosest first, so the first match wins. */
+/** Thresholds, worst first, so the first match wins. */
 const TIERS = [
-  { tier: QUALITY.BAD, loss: 0.1, rtt: 1.0, jitter: 0.12, bitrate: 120_000 },
-  { tier: QUALITY.POOR, loss: 0.05, rtt: 0.4, jitter: 0.06, bitrate: 350_000 },
-  { tier: QUALITY.FAIR, loss: 0.02, rtt: 0.15, jitter: 0.025, bitrate: 900_000 },
+  { tier: QUALITY.BAD, loss: 0.1, rtt: 1.0, jitter: 0.12 },
+  { tier: QUALITY.POOR, loss: 0.05, rtt: 0.4, jitter: 0.06 },
+  { tier: QUALITY.FAIR, loss: 0.02, rtt: 0.15, jitter: 0.025 },
 ];
 
 /**
  * What the numbers say about the connection. Pure on purpose: the policy is the
  * part worth testing, and it can be tested without a network at all.
  *
- * `availableOutgoingBitrate` is used when the browser reports it, because it is
- * a direct measurement of what the link will take rather than a symptom.
+ * Only symptoms count: packets lost, time in the air, jitter. An earlier version
+ * also consulted the browser's estimate of the available bandwidth, and dropped
+ * a flawless loopback call to "audio only" because that estimate starts near
+ * zero and climbs — a prediction is not evidence, and loss is evidence.
+ * `availableOutgoingBitrate` is used to cap the bitrate instead; see
+ * `capForAvailableBitrate`.
  */
-export function decideQuality({
-  lossRate = 0,
-  roundTripTime = 0,
-  jitter = 0,
-  availableOutgoingBitrate = null,
-} = {}) {
+export function decideQuality({ lossRate = 0, roundTripTime = 0, jitter = 0 } = {}) {
   for (const step of TIERS) {
     if (lossRate > step.loss || roundTripTime > step.rtt || jitter > step.jitter) {
       return step.tier;
     }
-    if (availableOutgoingBitrate !== null && availableOutgoingBitrate > 0 && availableOutgoingBitrate < step.bitrate) {
-      return step.tier;
-    }
   }
   return QUALITY.GOOD;
+}
+
+/**
+ * Lower a profile's bitrate to fit what the link is estimated to carry, without
+ * changing which tier it is. Halved on purpose: the estimate is optimistic
+ * often enough that aiming at it exactly is how a call ends up oscillating.
+ */
+export function capForAvailableBitrate(profile, availableOutgoingBitrate) {
+  if (!availableOutgoingBitrate || availableOutgoingBitrate <= 0) return profile;
+  const ceiling = Math.floor(availableOutgoingBitrate * 0.5);
+  if (profile.video && ceiling < 60_000) {
+    // Not enough for a picture at all; the voice still fits.
+    return { ...profile, video: false, videoBitrate: 0 };
+  }
+  if (profile.video && profile.videoBitrate > ceiling) {
+    return { ...profile, videoBitrate: ceiling };
+  }
+  return profile;
 }
 
 const ORDER = [QUALITY.BAD, QUALITY.POOR, QUALITY.FAIR, QUALITY.GOOD];
@@ -280,12 +294,14 @@ export class CallSession {
   #timer = null;
   #closed = false;
   #applied = null;
-  #stats = { packetsLost: 0, packetsReceived: 0 };
+  /** The most recent reading, kept so callers need not await getStats(). */
+  #snapshot = null;
 
-  constructor({ pc, send, role = 'caller', video = false, onEvent = () => {} } = {}) {
+  constructor({ pc, send, role = 'caller', video = false, callId = null, onEvent = () => {} } = {}) {
     this.#pc = pc;
     this.#send = send;
     this.role = role;
+    this.callId = callId;
     this.wantsVideo = video;
     this.onEvent = onEvent;
     this.localStream = null;
@@ -294,6 +310,17 @@ export class CallSession {
     this.cameraOn = video;
     this.startedAt = null;
     this.#governor = new QualityGovernor();
+
+    // Candidates go out as they are found, over the data channel that is already
+    // open — this is the trickle that a signalling server would otherwise relay.
+    pc.addEventListener('icecandidate', (event) => {
+      if (!event.candidate || this.#closed) return;
+      this.#send?.({ t: CALL.ICE, callId: this.callId, candidate: event.candidate.toJSON() });
+    });
+    pc.addEventListener('track', (event) => {
+      this.remoteStream = event.streams?.[0] ?? new MediaStream([event.track]);
+      this.#emit('remote', { stream: this.remoteStream });
+    });
   }
 
   get tier() {
@@ -347,6 +374,7 @@ export class CallSession {
     const offer = await this.#pc.createOffer();
     await this.#pc.setLocalDescription({ type: 'offer', sdp: tuneOpus(offer.sdp) });
     this.#apply(this.profile, { force: true });
+    this.#send?.({ t: CALL.OFFER, callId: this.callId, sdp: this.#pc.localDescription.sdp });
     this.#emit('offer', { sdp: this.#pc.localDescription.sdp });
     return this.#pc.localDescription.sdp;
   }
@@ -359,6 +387,7 @@ export class CallSession {
     const answer = await this.#pc.createAnswer();
     await this.#pc.setLocalDescription({ type: 'answer', sdp: tuneOpus(answer.sdp) });
     this.#apply(this.profile, { force: true });
+    this.#send?.({ t: CALL.ANSWER, callId: this.callId, sdp: this.#pc.localDescription.sdp });
     this.#emit('answer', { sdp: this.#pc.localDescription.sdp });
     return this.#pc.localDescription.sdp;
   }
@@ -408,13 +437,17 @@ export class CallSession {
     if (this.#closed) return;
     const report = await this.#pc.getStats();
     const reading = summariseStats(report);
+    this.#snapshot = { ...this.#bytes(report), reading, tier: this.tier };
     const before = this.tier;
     const after = this.#governor.sample(reading);
-    this.#emit('stats', { reading, tier: after });
+    // The tier says what the connection can be trusted with; the estimate only
+    // says how much of it to spend.
+    const profile = capForAvailableBitrate(QUALITY_PROFILES[after], reading.availableOutgoingBitrate);
+    this.#emit('stats', { reading, tier: after, profile });
     if (after !== before) {
-      this.#emit('quality', { tier: after, profile: QUALITY_PROFILES[after] });
+      this.#emit('quality', { tier: after, profile });
     }
-    this.#apply(QUALITY_PROFILES[after]);
+    this.#apply(profile);
   }
 
   /**
@@ -471,7 +504,58 @@ export class CallSession {
   }
 
   #sendState() {
-    this.#send?.({ t: CALL.STATE, muted: this.muted, cameraOn: this.cameraOn });
+    // The call id travels with every message, or the far side cannot tell which
+    // call a mute belongs to and drops it.
+    this.#send?.({
+      t: CALL.STATE,
+      callId: this.callId,
+      muted: this.muted,
+      cameraOn: this.cameraOn,
+    });
+  }
+
+  /** Byte counters out of a stats report. */
+  #bytes(report) {
+    let inboundAudioBytes = 0;
+    let inboundVideoBytes = 0;
+    let outboundAudioBytes = 0;
+    let outboundVideoBytes = 0;
+    report.forEach((entry) => {
+      if (entry.type === 'inbound-rtp' && !entry.isRemote) {
+        if (entry.kind === 'audio') inboundAudioBytes += entry.bytesReceived ?? 0;
+        if (entry.kind === 'video') inboundVideoBytes += entry.bytesReceived ?? 0;
+      }
+      if (entry.type === 'outbound-rtp' && !entry.isRemote) {
+        if (entry.kind === 'audio') outboundAudioBytes += entry.bytesSent ?? 0;
+        if (entry.kind === 'video') outboundVideoBytes += entry.bytesSent ?? 0;
+      }
+    });
+    return { inboundAudioBytes, inboundVideoBytes, outboundAudioBytes, outboundVideoBytes };
+  }
+
+  /**
+   * What is actually arriving. Read from the connection rather than inferred
+   * from the fact that negotiation succeeded, and synchronous: the numbers are
+   * already in hand from the last sample, and a caller that has to await them
+   * cannot use them in a poll.
+   */
+  stats() {
+    const bytes = this.#snapshot ?? { inboundAudioBytes: 0, inboundVideoBytes: 0, outboundAudioBytes: 0, outboundVideoBytes: 0 };
+    return {
+      tier: this.tier,
+      profile: this.profile.label,
+      videoEnabled: this.cameraOn,
+      muted: this.muted,
+      duration: this.duration,
+      ...bytes,
+    };
+  }
+
+  /** Read the connection now, rather than waiting for the next sample. */
+  async refreshStats() {
+    if (this.#closed) return this.stats();
+    this.#snapshot = { ...this.#bytes(await this.#pc.getStats()), reading: null, tier: this.tier };
+    return this.stats();
   }
 
   /** Seconds since the call connected. */
