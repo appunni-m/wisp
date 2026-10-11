@@ -23,3 +23,9 @@ native/build/
 native/*/build/
 native/.gradle/
 native/local.properties
+
+# Rust spike: the cargo registry is copied in because the sandbox cannot write
+# to ~/.cargo, and build output is never committed.
+.cargo/
+native/rust-spike/target/
+spike/target/

@@ -1,0 +1,19 @@
+[package]
+name = "wisp-spike"
+version = "0.1.0"
+edition = "2021"
+
+# The question this answers: how big is a Rust WebRTC data channel, and does it
+# build for Android without a prebuilt binary blob?
+[lib]
+# A shared library is what Android loads, so the size measured here is the size
+# that would ship.
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+webrtc = { version = "0.21", default-features = false, features = ["runtime-tokio", "crypto-ring"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
+# Echo cancellation, noise suppression and gain control: the part of a call that
+# is genuinely hard, and the reason people reach for libwebrtc.
+sonora = "0.2"
+async-trait = "0.1"

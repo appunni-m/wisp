@@ -375,12 +375,33 @@ Two details that would have been found on somebody's phone rather than in a test
 `npm run test:interop` runs both directions and is part of CI, so the two
 implementations cannot drift apart quietly.
 
-### Stage 2 — the connection (next)
+### Stage 2 — the connection
 
-`org.webrtc:google-webrtc` is no longer published to Maven Central; the
-maintained build is `io.github.webrtc-sdk:android`. The next step is a data
-channel between the native client and the browser, using the same SDP templating
-the web client uses, with an emulator-to-desktop interop test as the proof.
+`org.webrtc:google-webrtc` is no longer published to Maven Central — it has zero
+artifacts. The options are a community mirror of the C++ library, or compiling
+the transport ourselves in Rust. `native/rust-spike/` measures both and proves
+the second one works:
+
+| arm64, stripped | Size |
+|---|---|
+| Rust (`webrtc` + `sonora` + tokio) | **4.86 MB** |
+| libwebrtc (C++) | 10.85 MB |
+
+and, more to the point, a Rust peer and a real Chrome **complete ICE and DTLS and
+exchange a message both ways**. That test runs in CI on every push, because a
+claim that two implementations interoperate is worth nothing until it is run.
+
+The size argument is real but smaller than it sounds — 41.7 MB is the build-time
+AAR, and a phone installs about 11 MB of it. The better arguments are that a Rust
+core is compiled from source with no third-party blob, and that one core could
+serve the Android and desktop clients instead of two implementations of the same
+wire format.
+
+What is *not* settled is media: nothing in the spike encodes a picture, and
+`sonora` is a 0.2.0 pure-Rust port of WebRTC's echo cancellation against fifteen
+years of tuning in the C++ original. So the plan is a Rust core for the
+connection and file transfer, where it is already proven, and a decision about
+calls after testing audio on a real phone.
 
 ### Stage 3 onwards
 
